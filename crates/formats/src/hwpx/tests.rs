@@ -92,3 +92,16 @@ fn test_hwpx_minimal_import() {
     assert!(text.contains("표 셀 1"));
     assert!(text.contains("표 셀 2"));
 }
+
+#[test]
+fn test_hwpx_roundtrip() {
+    let doc = Document::from_text("KimchiCraft 대한민국 문서 테스트\n두 번째 문단입니다.");
+    let exported_bytes = export(&doc).expect("HWPX export should succeed");
+
+    assert!(exported_bytes.starts_with(b"PK"));
+
+    let re_imported = import(&exported_bytes).expect("HWPX re-import should succeed");
+    let text = re_imported.plain_text();
+    assert!(text.contains("KimchiCraft 대한민국 문서 테스트"));
+    assert!(text.contains("두 번째 문단입니다."));
+}

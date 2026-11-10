@@ -4,6 +4,7 @@ use wordcraft_doc::{Document, SectionProps};
 
 use crate::model::{self, Flow};
 
+pub mod export;
 mod header;
 mod package;
 mod section;
@@ -12,6 +13,7 @@ pub mod styles;
 #[cfg(test)]
 mod tests;
 
+pub use export::export;
 pub use package::Package;
 
 /// Import `bytes` of an HWPX package into a [`Document`].

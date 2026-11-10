@@ -88,6 +88,7 @@ pub fn export(ext: &str, doc: &Document) -> Option<Result<Vec<u8>, String>> {
         "ott" => odt::export_template(doc),
         "fodt" => odt::export_flat(doc),
         "tex" | "latex" | "ltx" => Ok(latex::export(doc).into_bytes()),
+        "hwpx" => hwpx::export(doc),
         _ => return None,
     })
 }

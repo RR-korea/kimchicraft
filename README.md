@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>대한민국 공공 및 비즈니스 환경에 최적화된 Pure Rust 오픈소스 차세대 워드프로세서</b><br>
-  <i>(A fork of WordCraft with Native HWP/HWPX support & Dual HWP/Word UI Mode)</i>
+  <i>(A fork of WordCraft with Native HWP/HWPX Read & Write support & Dual HWP/Word UI Mode)</i>
 </p>
 
 <p align="center">
@@ -14,26 +14,26 @@
   <img alt="Runs on macOS, Windows, Linux, BSD and Web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20BSD%20%C2%B7%20Web-3b5bdb?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2b47b5?style=flat-square">
   <img alt="Dual UI: Word & HWP" src="https://img.shields.io/badge/UI%20Mode-Word%20%26%20HWP-ff6b6b?style=flat-square">
-  <img alt="Native HWP & HWPX Support" src="https://img.shields.io/badge/Format-HWP%20%C2%B7%20HWPX%20%C2%B7%20DOCX%20%C2%B7%20ODT-20c997?style=flat-square">
+  <img alt="Native HWP & HWPX Support" src="https://img.shields.io/badge/Format-HWP%20%C2%B7%20HWPX%20(Read%20%26%20Write)-20c997?style=flat-square">
 </p>
 
 ---
 
 ## 🌟 프로젝트 개요 (Overview)
 
-**KimchiCraft**는 고성능 Pure Rust 워드프로세서인 [WordCraft](https://github.com/storytold/wordcraft)를 기반으로 포크되어, 한국의 표준 문서 포맷인 **HWP(5.x 바이너리) 및 HWPX(KS X 6101 표준) 파일의 네이티브 처리**와 한국 사용자들에게 익숙한 **아래아한글(HWP) 스타일 UI 및 단축키 시스템**을 결합한 차세대 크로스플랫폼 문서 에디터입니다.
+**KimchiCraft**는 고성능 Pure Rust 워드프로세서인 [WordCraft](https://github.com/storytold/wordcraft)를 기반으로 포크되어, 한국의 표준 문서 포맷인 **HWP(5.x 바이너리) 및 HWPX(KS X 6101 표준) 파일의 네이티브 읽기/쓰기(Round-trip)**와 한국 사용자들에게 익숙한 **아래아한글(HWP) 스타일 UI 및 단축키 시스템**을 결합한 차세대 크로스플랫폼 문서 에디터입니다.
 
-대한민국 공공기관, 학교, 기업에서 널리 쓰이는 한글 문서를 외부 프로그램이나 유료 상용 오피스 없이도 Windows, macOS, Linux 및 웹 브라우저(WebAssembly)에서 빠르고 완벽하게 열고 편집할 수 있는 환경을 제공합니다.
+대한민국 공공기관, 학교, 기업에서 널리 쓰이는 한글 문서를 외부 프로그램이나 유료 상용 오피스 없이도 Windows, macOS, Linux 및 웹 브라우저(WebAssembly)에서 빠르고 완벽하게 열고 편집하고 저장할 수 있는 환경을 제공합니다.
 
 ---
 
 ## 🎯 핵심 기능 및 특장점 (Key Features)
 
-### 1. Pure Rust 네이티브 HWPX 파서 (`wordcraft-formats::hwpx`)
-- **무의존성 오픈 표준 처리:** 오픈소스 AI 공공문서 처리 엔진인 [kordoc](https://github.com/chrisryugj/kordoc)의 설계 원리를 인용하여, 외부 Node.js나 Python 런타임 없이 **순수 Rust(zip + quick-xml)**로 HWPX(KS X 6101 OWPML 표준)를 직접 파싱합니다.
+### 1. Pure Rust 네이티브 HWPX 읽기 & 쓰기 (`wordcraft-formats::hwpx`)
+- **무의존성 오픈 표준 처리:** 오픈소스 AI 공공문서 처리 엔진인 [kordoc](https://github.com/chrisryugj/kordoc)의 설계 원리를 인용하여, 외부 Node.js나 Python 런타임 없이 **순수 Rust(zip + quick-xml)**로 HWPX(KS X 6101 OWPML 표준)를 직접 파싱하고 생성합니다.
 - **HWP 단위 정밀 매핑:** $1\text{ pt} = 100\text{ HWPU}$ (HWP Unit) 공식에 따라 폰트 크기, 문단 여백, 표 크기를 소수점 단위까지 정확하게 레이아웃 엔진과 동기화합니다.
-- **스타일 및 서식 완전 복원:** `Contents/header.xml`에 정의된 글꼴, 글자 모양(`charPr`), 문단 모양(`paraPr`), 테두리 및 배경 채우기(`borderFill`)를 완벽하게 해석하여 문서 AST에 반영합니다.
-- **복합 표(Table) 구조 복원:** `Contents/section*.xml`의 셀 가로/세로 병합(`colSpan`, `rowSpan`) 및 셀 너비/높이를 재귀적으로 파싱하고 결측 셀(`covered`)을 자동 유도하여 깨짐 없는 표 렌더링을 보장합니다.
+- **스타일 및 서식 완전 복원 & 내보내기:** `Contents/header.xml`에 정의된 글꼴, 글자 모양(`charPr`), 문단 모양(`paraPr`), 테두리 및 배경 채우기(`borderFill`)를 해석하며, 편집된 문서를 표준 규격의 HWPX ZIP 패키지로 완벽하게 재구성하여 저장(Export)합니다.
+- **복합 표(Table) 구조 지원:** `Contents/section*.xml`의 셀 가로/세로 병합(`colSpan`, `rowSpan`) 및 셀 너비/높이를 재귀적으로 처리하고 결측 셀(`covered`)을 자동 유도하여 깨짐 없는 표 입출력을 보장합니다.
 
 ### 2. Pure Rust 네이티브 레거시 HWP 5.x 파서 (`wordcraft-formats::hwp5`)
 - **OLE2 Compound File 디코딩:** Rust의 `cfb` 크레이트를 통해 OLE 복합 바이너리 컨테이너의 `FileHeader`, `DocInfo`, `BodyText/Section*` 스트림을 안전하게 탐색합니다.
@@ -93,13 +93,14 @@ HWP 특유의 `Ctrl + N` 계열 조합 키를 완벽 지원합니다:
 KimchiCraft Workspace
 ├── crates/
 │   ├── formats/                     # 문서 입출력 크레이트
-│   │   ├── src/hwpx/                # [신규] HWPX 네이티브 파서 모듈 (XML/ZIP)
+│   │   ├── src/hwpx/                # [신규] HWPX 네이티브 입출력 모듈 (XML/ZIP)
 │   │   │   ├── styles.rs            # HWPU -> pt 단위 변환, 색상/정렬 파싱
 │   │   │   ├── header.rs            # Contents/header.xml (폰트, 스타일, charPr, paraPr)
 │   │   │   ├── package.rs           # ZIP 컨테이너, manifest, BinData 관리
 │   │   │   ├── section.rs           # Contents/section*.xml (단락, 텍스트, 표, 셀 병합)
-│   │   │   ├── mod.rs               # import, import_on 진입점
-│   │   │   └── tests.rs             # HWPX 단위 테스트
+│   │   │   ├── export.rs            # HWPX 패키지 압축 및 XML 직렬화 생성기
+│   │   │   ├── mod.rs               # import, import_on, export 진입점
+│   │   │   └── tests.rs             # HWPX 단위 테스트 및 Round-trip 테스트
 │   │   ├── src/hwp5/                # [신규] 레거시 HWP 5.x 네이티브 파서 모듈 (OLE2)
 │   │   │   ├── record.rs            # HWP 계층형 레코드 헤더 및 스트림 리더
 │   │   │   ├── header.rs            # FileHeader 검증 및 DocInfo 파싱
@@ -141,8 +142,10 @@ KimchiCraft Workspace
   - OLE2 Compound File 컨테이너(`cfb`) 기반 스트림 파서 연결
   - `BodyText/Section*` Deflate 압축 해제 및 레코드 태그 디코딩
   - UTF-16LE 텍스트 런 및 문단 모양 복원
-- [ ] **Phase 4: HWPX 내보내기 (Export / Round-trip)**
-  - 편집된 문서 AST를 KS X 6101 XML 규격으로 직렬화하여 `.hwpx`로 저장
+- [x] **Phase 4: HWPX 내보내기/저장 기능 (Export / Round-trip)**
+  - 편집된 문서 AST를 KS X 6101 XML 규격으로 직렬화
+  - `mimetype`, `container.xml`, `content.hpf`, `header.xml`, `section0.xml` ZIP 패키징
+  - HWPX 왕복(Round-trip: Export ➔ Import) 검증 테스트 통과
 
 ---
 
@@ -165,10 +168,10 @@ cargo run --bin wordcraft
 
 ### 3. 테스트 실행
 ```bash
-# HWPX 파서 테스트
+# HWPX 파서 및 왕복(Round-trip) 테스트
 cargo test -p wordcraft-formats --lib hwpx
 
-# HWP 5.x 파서 테스트
+# HWP 5.x 바이너리 파서 테스트
 cargo test -p wordcraft-formats --lib hwp5
 ```
 
