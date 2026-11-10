@@ -62,7 +62,7 @@ pub fn hwp_insert(app: &mut WordApp, ui: &mut Ui) {
 /// HWP [쪽 (Page)] tab: Page setup (F7), Margins, Columns.
 pub fn hwp_page(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "편집 용지 (Page Setup)", Some("layout.pageSetupDialog"), app, |ui, app| {
-        big(ui, app, "page_setup", Some("편집 용지 (F7)"), "편집 용지 설정 (F7)", crate::widgets::ButtonAction::new("ui.dialog", json!({"name": "pageSetup"}), false));
+        big(ui, app, "pageSetup", "편집 용지\n(F7)", "layout.pageSetupDialog", json!({}), false);
     });
     layout(app, ui);
 }
@@ -80,7 +80,7 @@ pub fn hwp_review(app: &mut WordApp, ui: &mut Ui) {
 /// HWP [도구 (Tools)] tab: Shortcuts customizer, Preferences.
 pub fn hwp_tools(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "환경 설정 (Settings)", None, app, |ui, app| {
-        big(ui, app, "options", Some("환경 설정"), "환경 설정 (Options)", crate::widgets::ButtonAction::new("ui.dialog", json!({"name": "options"}), false));
-        big(ui, app, "keyboard", Some("단축키 설정"), "단축키 커스터마이즈", crate::widgets::ButtonAction::new("ui.dialog", json!({"name": "customizeKeyboard"}), false));
+        big(ui, app, "options", "환경\n설정", "ui.options", json!({}), false);
+        big(ui, app, "keyboard", "단축키\n설정", "ui.customizeKeyboard", json!({}), false);
     });
 }

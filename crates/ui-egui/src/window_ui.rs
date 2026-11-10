@@ -315,6 +315,9 @@ impl WordApp {
             alt_chord_used,
             alt_key_down,
             alt_modifier_seen,
+            keymap_preset: _,
+            ui_preset: _,
+            ..
         } = ui;
         swap_fields!(w:
             canvas,
