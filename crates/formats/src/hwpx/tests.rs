@@ -1,7 +1,7 @@
 use std::io::{Cursor, Write};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
-use wordcraft_doc::Rgb;
+use wordcraft_doc::{Rgb, StoryRef};
 
 use super::*;
 use super::styles::{hwpu_to_pt, parse_color};
@@ -27,7 +27,7 @@ fn test_hwpx_minimal_import() {
         let mut zip = ZipWriter::new(Cursor::new(&mut buf));
         let options = SimpleFileOptions::default();
 
-        let header_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        let header_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head">
     <hh:fontfaces>
         <hh:fontface lang="hangul">
@@ -40,9 +40,9 @@ fn test_hwpx_minimal_import() {
     <hh:paraProperties>
         <hh:paraPr id="0" align="CENTER"/>
     </hh:paraProperties>
-</hh:head>"#;
+</hh:head>"##;
 
-        let section_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        let section_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
     <hs:secPr>
         <hp:pagePr width="59528" height="84189"/>
@@ -75,19 +75,19 @@ fn test_hwpx_minimal_import() {
             </hp:tbl>
         </hp:run>
     </hp:p>
-</hs:sec>"#;
+</hs:sec>"##;
 
-        zip.start_file("Contents/header.xml", options).unwrap();
-        zip.write_all(header_xml.as_bytes()).unwrap();
+        zip.start_file("Contents/header.xml", options).expect("create header.xml");
+        zip.write_all(header_xml.as_bytes()).expect("write header.xml");
 
-        zip.start_file("Contents/section0.xml", options).unwrap();
-        zip.write_all(section_xml.as_bytes()).unwrap();
+        zip.start_file("Contents/section0.xml", options).expect("create section0.xml");
+        zip.write_all(section_xml.as_bytes()).expect("write section0.xml");
 
-        zip.finish().unwrap();
+        zip.finish().expect("finish zip");
     }
 
     let doc = import(&buf).expect("HWPX import should succeed");
-    let text = doc.plain_text();
+    let text = doc.plain_text(StoryRef::Body);
     assert!(text.contains("안녕하세요 한글 HWPX 문서입니다."));
     assert!(text.contains("표 셀 1"));
     assert!(text.contains("표 셀 2"));
@@ -101,7 +101,7 @@ fn test_hwpx_roundtrip() {
     assert!(exported_bytes.starts_with(b"PK"));
 
     let re_imported = import(&exported_bytes).expect("HWPX re-import should succeed");
-    let text = re_imported.plain_text();
+    let text = re_imported.plain_text(StoryRef::Body);
     assert!(text.contains("KimchiCraft 대한민국 문서 테스트"));
     assert!(text.contains("두 번째 문단입니다."));
 }

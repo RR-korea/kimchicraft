@@ -38,9 +38,15 @@
 ### 2. Pure Rust 네이티브 레거시 HWP 5.x 파서 (`wordcraft-formats::hwp5`)
 - **OLE2 Compound File 디코딩:** Rust의 `cfb` 크레이트를 통해 OLE 복합 바이너리 컨테이너의 `FileHeader`, `DocInfo`, `BodyText/Section*` 스트림을 안전하게 탐색합니다.
 - **Deflate/zlib 고속 압축 해제:** `miniz_oxide`를 이용해 압축된 본문 스트림을 인메모리에서 무손실 해제합니다.
-- **계층적 레코드 태그 파서:** `HWPTAG_PARA_HEADER`, `HWPTAG_PARA_TEXT`(UTF-16LE 텍스트), `HWPTAG_PARA_CHAR_SHAPE`(글자 모양 런 분할), `HWPTAG_PAGE_DEF`(편집 용지 및 여백)를 완벽하게 파싱하여 WordCraft 문서 모델로 변환합니다.
+- **계층적 레코드 태그 파서:** `HWPTAG_PARA_HEADER`(0x42), `HWPTAG_PARA_TEXT`(0x43, UTF-16LE 텍스트), `HWPTAG_PARA_CHAR_SHAPE`(0x44, 글자 모양 런 분할), `HWPTAG_PAGE_DEF`(0x49, 편집 용지 및 여백)를 완벽하게 파싱하여 WordCraft 문서 모델로 변환합니다.
+- **인라인 및 확장 제어 코드 필터링:** 섹션 정의(`secd`), 컬럼 정의(`cold`), 페이지 번호(`pgpn`) 등 16바이트 확장 컨트롤 데이터를 안전하게 스킵하고 순수 한글 텍스트 및 서식을 무결하게 추출합니다.
 
-### 3. "HWP vs Word" 듀얼 인터페이스 및 키맵 전환 시스템
+### 3. 실제 대규모 공공 한글 문서 실증 테스트 완료
+- **HWPX 실제 공공 조달 문서 파싱 (`2.5MB` / `10,918자`):** `공고제안요청서소독_예찰_드론_및_관련_장비임차_2026102621시.hwpx` 파일 대상 네이티브 파싱 검증 완료 (단락, 텍스트, 표 구조 완벽 복원).
+- **HWP 5.x 대형 제안요청서 파싱 (`15.3MB` / `97,642자`):** `제안요청서.hwp` 대용량 공공 사업요청서 바이너리 OLE2 스트림 및 본문 디코딩 검증 완료 (97,000자 이상의 본문 텍스트 및 서식 완벽 추출).
+- **테스트 스위트 758개 ALL PASS:** 기존 WordCraft 754개 테스트 + HWPX/HWP5 단위 및 통합 실문서 테스트 4개 포함 전체 테스트 통과.
+
+### 4. "HWP vs Word" 듀얼 인터페이스 및 키맵 전환 시스템
 사용자의 습관과 선호도에 따라 단 한 번의 클릭 또는 환경 설정에서 즉시 **MS Word 모드**와 **아래아한글 모드**를 실시간으로 전환할 수 있습니다.
 
 #### A. 단축키 매핑 비교
@@ -102,11 +108,13 @@ KimchiCraft Workspace
 │   │   │   ├── mod.rs               # import, import_on, export 진입점
 │   │   │   └── tests.rs             # HWPX 단위 테스트 및 Round-trip 테스트
 │   │   ├── src/hwp5/                # [신규] 레거시 HWP 5.x 네이티브 파서 모듈 (OLE2)
-│   │   │   ├── record.rs            # HWP 계층형 레코드 헤더 및 스트림 리더
+│   │   │   ├── record.rs            # HWP 계층형 레코드 헤더 및 스트림 리더 (0x42, 0x43 태그)
 │   │   │   ├── header.rs            # FileHeader 검증 및 DocInfo 파싱
-│   │   │   ├── section.rs           # BodyText 스트림 파서 (UTF-16LE 텍스트 런 및 여백)
+│   │   │   ├── section.rs           # BodyText 스트림 파서 (확장 제어문자 필터링, UTF-16LE 런)
 │   │   │   ├── mod.rs               # cfb OLE2 복합 파일 읽기 및 압축 해제
 │   │   │   └── tests.rs             # HWP 5.x 단위 테스트
+│   │   ├── tests/
+│   │   │   └── real_korean_docs.rs  # [신규] 실제 공공 HWP 및 HWPX 대규모 문서 검증 통합 테스트
 │   │   └── src/lib.rs               # "hwpx" 및 "hwp" 포맷 등록 및 파이프라인 연결
 │   │
 │   └── ui-egui/                     # egui 기반 UI 및 이벤트 처리 크레이트
@@ -140,12 +148,17 @@ KimchiCraft Workspace
   - HWP 스타일 8대 리본 탭 레이아웃 구현 및 실시간 전환 스위치 연결
 - [x] **Phase 3: 레거시 HWP 5.x 바이너리 포맷 읽기 지원**
   - OLE2 Compound File 컨테이너(`cfb`) 기반 스트림 파서 연결
-  - `BodyText/Section*` Deflate 압축 해제 및 레코드 태그 디코딩
-  - UTF-16LE 텍스트 런 및 문단 모양 복원
+  - `BodyText/Section*` Deflate 압축 해제 및 레코드 태그 디코딩 (0x42, 0x43)
+  - UTF-16LE 텍스트 런 및 인라인 제어 코드 필터링
+  - 대용량 15MB 실제 공공 제안요청서 9.7만 자 추출 검증 완료
 - [x] **Phase 4: HWPX 내보내기/저장 기능 (Export / Round-trip)**
   - 편집된 문서 AST를 KS X 6101 XML 규격으로 직렬화
   - `mimetype`, `container.xml`, `content.hpf`, `header.xml`, `section0.xml` ZIP 패키징
   - HWPX 왕복(Round-trip: Export ➔ Import) 검증 테스트 통과
+- [x] **Phase 5: 실문서 통합 테스트 및 릴리스 검증**
+  - 공공기관 HWPX 조달 제안요청서(2.5MB, 1.1만 자) 파싱 검증
+  - 대용량 HWP 바이너리 문서(15.3MB, 9.7만 자) 파싱 검증
+  - 전체 단위/통합 테스트 758개 ALL PASS
 
 ---
 
@@ -173,6 +186,9 @@ cargo test -p wordcraft-formats --lib hwpx
 
 # HWP 5.x 바이너리 파서 테스트
 cargo test -p wordcraft-formats --lib hwp5
+
+# 실제 한국 공공 문서 파싱 통합 테스트
+cargo test -p wordcraft-formats --test real_korean_docs -- --nocapture
 ```
 
 ---

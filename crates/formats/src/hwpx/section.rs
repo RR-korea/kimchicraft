@@ -89,12 +89,12 @@ impl<'a, 'p> SectionParser<'a, 'p> {
                                     if let Ok(hwpu) = val.parse::<i64>() {
                                         let pt = hwpu_to_pt(hwpu);
                                         match attr.key.local_name().as_ref() {
-                                            b"left" => page.margin_l = pt,
-                                            b"right" => page.margin_r = pt,
-                                            b"top" => page.margin_t = pt,
-                                            b"bottom" => page.margin_b = pt,
-                                            b"header" => page.header_margin = pt,
-                                            b"footer" => page.footer_margin = pt,
+                                            b"left" => page.margin_left = pt,
+                                            b"right" => page.margin_right = pt,
+                                            b"top" => page.margin_top = pt,
+                                            b"bottom" => page.margin_bottom = pt,
+                                            b"header" => page.header = pt,
+                                            b"footer" => page.footer = pt,
                                             _ => {}
                                         }
                                     }
@@ -191,7 +191,7 @@ impl<'a, 'p> SectionParser<'a, 'p> {
                 }
                 Event::Text(ref e) => {
                     if in_text {
-                        if let Ok(t) = e.unescape() {
+                        if let Ok(t) = e.decode() {
                             let fmt = current_char_pr_id
                                 .and_then(|cid| self.header.char_props.get(&cid).cloned())
                                 .unwrap_or_default();
@@ -401,8 +401,8 @@ impl<'a, 'p> SectionParser<'a, 'p> {
         }
 
         let id = bin_id?;
-        let (bytes, ext) = self.package.read_image(&id)?;
-        let img = make_img(&bytes, &ext, width_pt, height_pt, String::new())?;
+        let (bytes, _) = self.package.read_image(&id)?;
+        let img = make_img(bytes, Some(width_pt), Some(height_pt), "")?;
         Some(Inline::Image(img))
     }
 }

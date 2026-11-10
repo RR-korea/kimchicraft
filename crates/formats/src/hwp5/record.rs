@@ -10,7 +10,7 @@ pub struct Record {
 }
 
 pub mod tags {
-    // DocInfo tags
+    // DocInfo tags (HWPTAG_BEGIN = 0x10)
     pub const DOCUMENT_PROPERTIES: u16 = 0x10;
     pub const ID_MAPPINGS: u16 = 0x11;
     pub const BIN_DATA: u16 = 0x12;
@@ -22,16 +22,19 @@ pub mod tags {
     pub const PARA_SHAPE: u16 = 0x18;
     pub const STYLE: u16 = 0x19;
 
-    // BodyText tags
-    pub const PARA_HEADER: u16 = 0x32; // 50
-    pub const PARA_TEXT: u16 = 0x33;   // 51
-    pub const PARA_CHAR_SHAPE: u16 = 0x34; // 52
-    pub const PARA_LINE_SEG: u16 = 0x35;   // 53
-    pub const PARA_RANGE_TAG: u16 = 0x36;  // 54
-    pub const CTRL_HEADER: u16 = 0x37;     // 55
-    pub const LIST_HEADER: u16 = 0x38;     // 56
-    pub const PAGE_DEF: u16 = 0x39;        // 57 (or table depending on context)
-    pub const TABLE: u16 = 0x3D;           // 61
+    // BodyText tags (HWPTAG_BEGIN(0x10) + index)
+    pub const PARA_HEADER: u16 = 0x42;      // 66 (0x10 + 50)
+    pub const PARA_TEXT: u16 = 0x43;        // 67 (0x10 + 51)
+    pub const PARA_CHAR_SHAPE: u16 = 0x44;  // 68 (0x10 + 52)
+    pub const PARA_LINE_SEG: u16 = 0x45;    // 69 (0x10 + 53)
+    pub const PARA_RANGE_TAG: u16 = 0x46;   // 70 (0x10 + 54)
+    pub const CTRL_HEADER: u16 = 0x47;      // 71 (0x10 + 55)
+    pub const LIST_HEADER: u16 = 0x48;      // 72 (0x10 + 56)
+    pub const PAGE_DEF: u16 = 0x49;         // 73 (0x10 + 57)
+    pub const FOOTNOTE_DEF: u16 = 0x4A;     // 74 (0x10 + 58)
+    pub const PAGE_BORDER_FILL: u16 = 0x4B; // 75 (0x10 + 59)
+    pub const SHAPE_COMPONENT: u16 = 0x4C;  // 76 (0x10 + 60)
+    pub const TABLE: u16 = 0x4D;            // 77 (0x10 + 61)
 }
 
 /// Reads records sequentially from a decompressed HWP 5.x stream.

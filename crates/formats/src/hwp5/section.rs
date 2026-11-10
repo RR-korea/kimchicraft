@@ -2,7 +2,7 @@
 
 use wordcraft_doc::SectionProps;
 
-use crate::model::{Cell, FBlock, FTable, Fmt, Para, clean_text};
+use crate::model::{FBlock, Fmt, Para, clean_text};
 use super::header::DocInfo;
 use super::record::{RecordReader, tags};
 
@@ -85,10 +85,10 @@ impl<'a> SectionParser<'a> {
                         let top = u32::from_le_bytes([record.data[16], record.data[17], record.data[18], record.data[19]]);
                         let bottom = u32::from_le_bytes([record.data[20], record.data[21], record.data[22], record.data[23]]);
 
-                        page.margin_l = left as f32 / 100.0;
-                        page.margin_r = right as f32 / 100.0;
-                        page.margin_t = top as f32 / 100.0;
-                        page.margin_b = bottom as f32 / 100.0;
+                        page.margin_left = left as f32 / 100.0;
+                        page.margin_right = right as f32 / 100.0;
+                        page.margin_top = top as f32 / 100.0;
+                        page.margin_bottom = bottom as f32 / 100.0;
                     }
                 }
                 _ => {}
@@ -112,12 +112,37 @@ impl<'a> SectionParser<'a> {
             return;
         }
 
-        // Filter out inline control codes (except tab and linefeed)
-        let filtered: Vec<u16> = raw_u16
-            .iter()
-            .copied()
-            .filter(|&c| c >= 0x20 || c == 0x09 || c == 0x0A)
-            .collect();
+        // Filter out inline/extended control codes and extract clean characters
+        let mut filtered = Vec::with_capacity(raw_u16.len());
+        let mut idx = 0;
+        while idx < raw_u16.len() {
+            let c = raw_u16[idx];
+            match c {
+                // Extended controls (8 UTF-16 units = 16 bytes)
+                1 | 2 | 3 | 11 | 12 | 14 | 15 | 16 | 17 | 18 | 21 | 22 | 23 => {
+                    idx = (idx + 8).min(raw_u16.len());
+                }
+                // Inline controls (8 UTF-16 units = 16 bytes)
+                4 | 5 | 6 | 7 | 8 | 19 | 20 => {
+                    idx = (idx + 8).min(raw_u16.len());
+                }
+                0x09 | 0x0A => {
+                    filtered.push(c);
+                    idx += 1;
+                }
+                0x0D => {
+                    // Carriage return
+                    idx += 1;
+                }
+                c if c >= 0x20 => {
+                    filtered.push(c);
+                    idx += 1;
+                }
+                _ => {
+                    idx += 1;
+                }
+            }
+        }
 
         if filtered.is_empty() {
             return;

@@ -7,12 +7,12 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 use wordcraft_doc::{Align, Document, SectionProps};
 
-use crate::model::{self, Cell, FBlock, Flow, Fmt, Inline, Para};
+use crate::model::{self, Cell, FBlock, Flow, Inline, Para};
 
 /// Export a [`Document`] as an HWPX package (ZIP bytes).
 pub fn export(doc: &Document) -> Result<Vec<u8>, String> {
     let flow = model::from_doc(doc);
-    let section_props = doc.sections.first().cloned().unwrap_or_default();
+    let section_props = doc.sections().first().map(|(_, s)| (*s).clone()).unwrap_or_default();
     export_flow(&flow, &section_props)
 }
 
@@ -273,10 +273,10 @@ fn generate_section_xml(flow: &Flow, section_props: &SectionProps, styles: &Styl
 
     let page_w_hwpu = (section_props.page_w * 100.0) as i64;
     let page_h_hwpu = (section_props.page_h * 100.0) as i64;
-    let margin_l_hwpu = (section_props.margin_l * 100.0) as i64;
-    let margin_r_hwpu = (section_props.margin_r * 100.0) as i64;
-    let margin_t_hwpu = (section_props.margin_t * 100.0) as i64;
-    let margin_b_hwpu = (section_props.margin_b * 100.0) as i64;
+    let margin_l_hwpu = (section_props.margin_left * 100.0) as i64;
+    let margin_r_hwpu = (section_props.margin_right * 100.0) as i64;
+    let margin_t_hwpu = (section_props.margin_top * 100.0) as i64;
+    let margin_b_hwpu = (section_props.margin_bottom * 100.0) as i64;
 
     s.push_str(&format!(
         r#"    <hs:secPr>
