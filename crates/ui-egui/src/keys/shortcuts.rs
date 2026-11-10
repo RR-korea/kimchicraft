@@ -115,8 +115,66 @@ pub(super) fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value
     }
 }
 
+/// HWP-specific shortcuts (F7, Alt+L, Alt+T, Alt+S, Alt+O, Alt+N, Ctrl+F10, etc.)
+pub(super) fn hwp_shortcut(app: &WordApp, key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
+    if app.ui.keymap_preset != crate::preset::KeymapPreset::Hwp {
+        return None;
+    }
+    let alt_only = m.alt && !m.command && !m.ctrl && !m.mac_cmd && !m.shift;
+    let ctrl_only = (m.ctrl || m.command) && !m.alt && !m.shift;
+
+    match key {
+        // F7: Page setup (편집 용지 설정)
+        Key::F7 if !m.alt && !m.ctrl && !m.command && !m.shift => {
+            Some(("ui.dialog", json!({"name": "pageSetup"})))
+        }
+        // Alt+L: Font dialog (글자 모양)
+        Key::L if alt_only => {
+            Some(("ui.dialog", json!({"name": "font"})))
+        }
+        // Alt+T: Paragraph dialog (문단 모양)
+        Key::T if alt_only => {
+            Some(("ui.dialog", json!({"name": "paragraph"})))
+        }
+        // Alt+S: Save (저장)
+        Key::S if alt_only => {
+            Some(("file.save", json!({})))
+        }
+        // Alt+O: Open (불러오기)
+        Key::O if alt_only => {
+            Some(("file.open", json!({})))
+        }
+        // Alt+N: New document (새 문서)
+        Key::N if alt_only => {
+            Some(("file.new", json!({})))
+        }
+        // Alt+P: Print (인쇄)
+        Key::P if alt_only => {
+            Some(("file.print", json!({})))
+        }
+        // Ctrl+F10: Symbol table (문자표)
+        Key::F10 if ctrl_only => {
+            Some(("ui.dialog", json!({"name": "symbol"})))
+        }
+        // Alt+C: Copy / Paste formatting (모양 복사)
+        Key::C if alt_only => {
+            Some(("edit.copyFormat", json!({})))
+        }
+        _ => None,
+    }
+}
+
 /// Find and run the command bound to this key. Returns true if handled.
 pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
+    // Check HWP-mode shortcuts first
+    if let Some((id, params)) = hwp_shortcut(app, key, m) {
+        let _ = app.run(id, params);
+        if m.alt {
+            app.canvas.swallow_text = true;
+        }
+        return true;
+    }
+
     let reg = app.session.registry.clone();
     let name = key_name(key);
     let bound = name.and_then(|n| app.session.keymap.resolve(&reg, &combo(m, n, true)));

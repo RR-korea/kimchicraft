@@ -59,6 +59,7 @@ pub mod objects;
 pub mod options;
 pub mod panes;
 pub mod paste_picture;
+pub mod preset;
 pub mod previews;
 pub mod print_page;
 pub mod printing;
@@ -426,6 +427,10 @@ pub struct UiState {
     /// spaces, or characters without spaces. Right-click the count in the status bar, or File ›
     /// Options › Display. Junk saved values read as words.
     pub status_count: StatusCount,
+    /// Keymap preset: Word vs Hancom HWP.
+    pub keymap_preset: preset::KeymapPreset,
+    /// UI layout preset: Word vs Hancom HWP.
+    pub ui_preset: preset::UiPreset,
 }
 
 /// The ribbon tab the app opens on, and the one it falls back to when the tab that was showing
@@ -503,6 +508,8 @@ impl Default for UiState {
             dictionary: Vec::new(),
             display_server: DisplayServer::Auto,
             status_count: StatusCount::default(),
+            keymap_preset: preset::KeymapPreset::default(),
+            ui_preset: preset::UiPreset::default(),
         }
     }
 }

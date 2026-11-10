@@ -405,8 +405,66 @@ fn ime_commit(app: &mut WordApp, text: String) {
     }
 }
 
+/// HWP-specific table hotkeys (F5, M, S, C, L) when cursor is inside a table.
+fn handle_hwp_table_keys(app: &mut WordApp, key: Key, modifiers: Modifiers) -> bool {
+    let in_table = app.session.sel.focus.path.cell().is_some();
+    if !in_table {
+        return false;
+    }
+
+    // F5: Table cell selection toggle
+    if key == Key::F5 && modifiers.is_none() {
+        if app.session.cell_range().is_none() {
+            let _ = app.run("table.selectCell", json!({}));
+        } else {
+            let _ = app.run("table.selectTable", json!({}));
+        }
+        app.canvas.swallow_text = true;
+        return true;
+    }
+
+    // When cell range is selected, M, S, C, L act as table hotkeys
+    if app.session.cell_range().is_some() && modifiers.is_none() {
+        match key {
+            Key::M => {
+                let _ = app.run("table.merge", json!({}));
+                app.canvas.swallow_text = true;
+                return true;
+            }
+            Key::S => {
+                let _ = app.run("ui.dialog", json!({"name": "splitCells"}));
+                app.canvas.swallow_text = true;
+                return true;
+            }
+            Key::C => {
+                let _ = app.run("ui.dialog", json!({"name": "tableProperties"}));
+                app.canvas.swallow_text = true;
+                return true;
+            }
+            Key::L => {
+                let _ = app.run("table.borders", json!({}));
+                app.canvas.swallow_text = true;
+                return true;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
 /// A key press the canvas handles (shortcut, ink, objects, clipboard keys).
 fn key_press(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers: Modifiers) {
+    // HWP mode chord sequence (Ctrl+N, T etc.)
+    if crate::keys::chord::handle_chord(app, ctx, key, modifiers) {
+        return;
+    }
+
+    // HWP mode table hotkeys (F5, M, S, C, L)
+    if app.ui.keymap_preset == crate::preset::KeymapPreset::Hwp && handle_hwp_table_keys(app, key, modifiers) {
+        return;
+    }
+
     if key == Key::Escape && app.session.painter.is_some() {
         app.session.painter = None;
         return;

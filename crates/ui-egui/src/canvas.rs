@@ -158,6 +158,7 @@ pub struct CanvasState {
     unit_drag: Option<UnitDrag>,
     pub last_highlight: String,
     pub last_font_color: String,
+    pub chord: crate::keys::chord::ChordState,
     pub last_shading: String,
     pub open_url: Option<String>,
     /// Screen rects of pages last frame (for the control channel: page ↔ screen coordinates).
@@ -404,6 +405,7 @@ impl Default for CanvasState {
             last_highlight: "yellow".into(),
             last_font_color: "C00000".into(),
             last_shading: "FFF2CC".into(),
+            chord: Default::default(),
             open_url: None,
             page_rects: Vec::new(),
             scrollbar_page: None,

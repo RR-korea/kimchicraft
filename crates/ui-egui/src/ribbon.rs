@@ -15,6 +15,7 @@ mod common;
 mod design;
 mod draw;
 mod home;
+pub mod hwp;
 mod insert;
 mod language;
 mod layout;
@@ -113,8 +114,13 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     // contextual ones (the Outlining tab right after File). A contextual tab (Table, Picture
     // Format) may be stored while the selection moved away, and a tab may have been hidden.
     let user_tabs = app.session.ribbon.tabs().into_owned();
-    let mut tabs: Vec<(String, bool)> = vec![("File".to_string(), false)];
-    tabs.extend(user_tabs.iter().filter(|e| !e.hidden).map(|e| (e.name.clone(), e.custom)));
+    let mut tabs: Vec<(String, bool)> = if app.ui.ui_preset == crate::preset::UiPreset::Hwp {
+        hwp::HWP_TABS.iter().map(|&t| (t.to_string(), false)).collect()
+    } else {
+        let mut t = vec![("File".to_string(), false)];
+        t.extend(user_tabs.iter().filter(|e| !e.hidden).map(|e| (e.name.clone(), e.custom)));
+        t
+    };
     for ct in contextual_tabs(&app.session) {
         if ct == "Outlining" {
             tabs.insert(1.min(tabs.len()), (ct.to_string(), false));
@@ -429,6 +435,11 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         "Developer" => developer(app, ui),
                         "Zotero" => zotero(app, ui),
                         "Help" => help(app, ui),
+                        // HWP-specific tabs
+                        "Edit" => hwp::hwp_edit(app, ui),
+                        "Format" => hwp::hwp_format(app, ui),
+                        "Page" => hwp::hwp_page(app, ui),
+                        "Tools" => hwp::hwp_tools(app, ui),
                         "Table Design" => table_design(app, ui),
                         "Table Layout" => table_layout(app, ui),
                         "Equation" if app.session.math.is_some() => crate::equation_tab::show(app, ui),

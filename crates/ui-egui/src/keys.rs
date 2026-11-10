@@ -9,6 +9,7 @@ use wordcraft_engine::ImeEditOutcome;
 
 mod alt_code;
 mod canvas;
+pub mod chord;
 mod ime;
 mod shortcuts;
 

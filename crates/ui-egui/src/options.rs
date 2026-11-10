@@ -222,6 +222,31 @@ fn flag(app: &mut WordApp, ui: &mut Ui, label: &str, key: &str, value: bool) {
 /// Draws General options: interface theme and size, mini toolbar, dark page, community button and
 /// default apps; the Start screen; and personalization such as user name and initials.
 fn general(app: &mut WordApp, ui: &mut Ui) {
+    section(ui, "UI & 단축키 스타일 (UI & Keymap Preset)");
+    ui.horizontal(|ui| {
+        let label = ui.label("인터페이스 및 단축키 모드:");
+        let current_ui = app.ui.ui_preset;
+        let combo = craft_ui::ComboBox::from_id_salt("preset_ui")
+            .selected_text(current_ui.label())
+            .width(260.0)
+            .show_ui(ui, |ui| {
+                for preset in crate::preset::UiPreset::ALL {
+                    if ui.selectable_label(current_ui == preset, preset.label()).clicked() {
+                        app.ui.ui_preset = preset;
+                        app.ui.keymap_preset = match preset {
+                            crate::preset::UiPreset::Word => crate::preset::KeymapPreset::Word,
+                            crate::preset::UiPreset::Hwp => crate::preset::KeymapPreset::Hwp,
+                        };
+                        app.ui.tab = match preset {
+                            crate::preset::UiPreset::Word => "Home".into(),
+                            crate::preset::UiPreset::Hwp => "Format".into(),
+                        };
+                    }
+                }
+            });
+        combo.response.labelled_by(label.id).on_hover_text("Word 스타일(리본 메뉴, Word 단축키) 또는 한글 HWP 스타일(F7, Alt+L, Alt+T, Ctrl+N, T 등)을 선택합니다.");
+    });
+    ui.add_space(8.0);
     section(ui, "Interface");
     theme_picker(app, ui);
     interface_size_picker(app, ui);
