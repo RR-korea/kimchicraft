@@ -1,50 +1,53 @@
-//! Style parsing and unit conversion for HWPX documents.
+//! Unit and value conversion for HWPX documents.
 
 use wordcraft_doc::{Align, Rgb};
 
-/// 1 pt = 100 HWPU (1 inch = 72 pt = 7200 HWPU).
+/// 1 pt = 100 HWPUNIT (1 inch = 72 pt = 7200 HWPUNIT).
 pub fn hwpu_to_pt(hwpu: i64) -> f32 {
     hwpu as f32 / 100.0
 }
 
-/// Parse a color string from HWPX attributes (hex `#RRGGBB`, `0xRRGGBB`, or decimal).
-pub fn parse_color(s: &str) -> Option<Rgb> {
-    let s = s.trim();
-    if s.is_empty() || s.eq_ignore_ascii_case("none") {
-        return None;
-    }
-    if let Some(hex) = s.strip_prefix('#').or_else(|| s.strip_prefix("0x")) {
-        if hex.len() == 6 {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            return Some(Rgb(r, g, b));
-        } else if hex.len() == 8 {
-            // ARGB or RGBA - take the RGB portion
-            let r = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let g = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            let b = u8::from_str_radix(&hex[6..8], 16).ok()?;
-            return Some(Rgb(r, g, b));
-        }
-    }
-    // Try decimal integer
-    if let Ok(num) = s.parse::<u32>() {
-        let r = ((num >> 16) & 0xFF) as u8;
-        let g = ((num >> 8) & 0xFF) as u8;
-        let b = (num & 0xFF) as u8;
-        return Some(Rgb(r, g, b));
-    }
-    None
+/// Points as HWPUNIT, rounded.
+pub fn pt_to_hwpu(pt: f32) -> i64 {
+    (pt * 100.0).round() as i64
 }
 
-/// Map HWPX paragraph alignment strings to WordCraft Align enum.
+/// A colour attribute: `#RRGGBB` (`#AARRGGBB` keeps its RGB); `none` and anything else is none.
+pub fn parse_color(s: &str) -> Option<Rgb> {
+    let hex = s.trim().strip_prefix('#')?;
+    let hex = match hex.len() {
+        6 => hex,
+        8 => hex.get(2..)?,
+        _ => return None,
+    };
+    let byte = |i: usize| hex.get(i..i + 2).and_then(|x| u8::from_str_radix(x, 16).ok());
+    Some(Rgb(byte(0)?, byte(2)?, byte(4)?))
+}
+
+/// `#RRGGBB` for `c`.
+pub fn color_hex(c: Rgb) -> String {
+    format!("#{:02X}{:02X}{:02X}", c.0, c.1, c.2)
+}
+
+/// HWPX paragraph alignment (`hh:align horizontal`).
 pub fn parse_align(s: &str) -> Option<Align> {
     match s.trim().to_ascii_uppercase().as_str() {
         "LEFT" => Some(Align::Left),
         "CENTER" => Some(Align::Center),
         "RIGHT" => Some(Align::Right),
         "JUSTIFY" => Some(Align::Justify),
-        "DISTRIBUTE" => Some(Align::Distribute),
+        "DISTRIBUTE" | "DISTRIBUTE_SPACE" => Some(Align::Distribute),
         _ => None,
+    }
+}
+
+/// The `hh:align horizontal` value for `a`.
+pub fn align_name(a: Option<Align>) -> &'static str {
+    match a {
+        None | Some(Align::Left) => "LEFT",
+        Some(Align::Right) => "RIGHT",
+        Some(Align::Center) => "CENTER",
+        Some(Align::Distribute) => "DISTRIBUTE",
+        Some(Align::Justify) => "JUSTIFY",
     }
 }

@@ -1,242 +1,145 @@
-//! Header metadata parser for HWPX documents (`Contents/header.xml`).
+//! Header metadata for HWPX documents (`Contents/header.xml`): fonts, character and paragraph
+//! properties, border fills and styles, by id.
 
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::sync::Arc;
 
-use quick_xml::Reader;
-use quick_xml::events::Event;
 use wordcraft_doc::{Align, Rgb};
 
-use crate::model::{Fmt, Kind, Spacing, kept_font};
 use super::styles::{hwpu_to_pt, parse_align, parse_color};
+use super::xml::{self, Elem};
+use crate::model::{Fmt, Spacing, kept_font};
 
-/// Paragraph style definition extracted from `<hh:paraPr>`.
-#[derive(Clone, Debug, Default)]
+/// Paragraph properties from `<hh:paraPr>`.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ParaStyleDef {
     pub align: Option<Align>,
-    pub kind: Kind,
     pub spacing: Spacing,
-    pub border_fill_id: Option<u32>,
+    pub page_break: bool,
+    pub keep_next: bool,
 }
 
-/// Metadata collection from `Contents/header.xml`.
+/// What the sections need from `Contents/header.xml`.
 #[derive(Clone, Debug, Default)]
 pub struct HeaderData {
-    /// Font faces by id: id -> font name
-    pub fonts: HashMap<u32, Arc<str>>,
-    /// Character properties by id: id -> Fmt
     pub char_props: HashMap<u32, Fmt>,
-    /// Paragraph properties by id: id -> ParaStyleDef
     pub para_props: HashMap<u32, ParaStyleDef>,
-    /// Border/Fill properties: id -> (shading, borders)
-    pub border_fills: HashMap<u32, Option<Rgb>>,
-    /// Style definitions: id -> (para_pr_id, char_pr_id)
+    /// Border fills with a solid background: id → colour.
+    pub border_fills: HashMap<u32, Rgb>,
+    /// Styles: id → (paraPr id, charPr id).
     pub styles: HashMap<u32, (Option<u32>, Option<u32>)>,
+}
+
+fn id(e: &Elem, key: &str) -> Option<u32> {
+    e.int(key).and_then(|v| u32::try_from(v).ok())
 }
 
 impl HeaderData {
     pub fn parse(xml: &[u8]) -> Self {
         let mut data = HeaderData::default();
-        let mut reader = Reader::from_reader(Cursor::new(xml));
-        reader.config_mut().trim_text(true);
-        let mut buf = Vec::with_capacity(1024);
+        let Some(root) = xml::parse(xml) else { return data };
 
-        let mut current_para_pr_id: Option<u32> = None;
-        let mut current_border_fill_id: Option<u32> = None;
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) | Event::Empty(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"font" => {
-                            let mut id = None;
-                            let mut face = None;
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"id" => id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                                    b"face" => face = attr.unescape_value().ok().map(|v| v.to_string()),
-                                    _ => {}
-                                }
-                            }
-                            if let (Some(id), Some(face)) = (id, face) {
-                                if let Some(font_arc) = kept_font(&face) {
-                                    data.fonts.insert(id, font_arc);
-                                }
-                            }
-                        }
-                        b"charPr" => {
-                            let mut id = None;
-                            let mut fmt = Fmt::default();
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"id" => id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                                    b"height" => {
-                                        if let Ok(h) = attr.unescape_value() {
-                                            if let Ok(hwpu) = h.parse::<i64>() {
-                                                fmt.size = Some(hwpu_to_pt(hwpu));
-                                            }
-                                        }
-                                    }
-                                    b"textColor" => {
-                                        if let Ok(c) = attr.unescape_value() {
-                                            fmt.color = parse_color(&c);
-                                        }
-                                    }
-                                    b"bold" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            fmt.bold = v == "1" || v.eq_ignore_ascii_case("true");
-                                        }
-                                    }
-                                    b"italic" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            fmt.italic = v == "1" || v.eq_ignore_ascii_case("true");
-                                        }
-                                    }
-                                    b"underlineType" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            fmt.underline = !v.eq_ignore_ascii_case("none") && !v.is_empty();
-                                        }
-                                    }
-                                    b"strikeOutType" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            fmt.strike = !v.eq_ignore_ascii_case("none") && !v.is_empty();
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if let Some(id) = id {
-                                data.char_props.insert(id, fmt);
-                            }
-                        }
-                        b"fontRef" => {
-                            // Sub-element of charPr specifying font IDs for various scripts (hangul, latin, etc.)
-                            // For simplicity, take hangul or latin
-                            if let Some(last_id) = data.char_props.keys().copied().max() {
-                                for attr in e.attributes().flatten() {
-                                    let key = attr.key.local_name();
-                                    if key.as_ref() == b"hangul" || key.as_ref() == b"latin" {
-                                        if let Ok(fid_str) = attr.unescape_value() {
-                                            if let Ok(fid) = fid_str.parse::<u32>() {
-                                                if let Some(font_name) = data.fonts.get(&fid) {
-                                                    if let Some(fmt) = data.char_props.get_mut(&last_id) {
-                                                        fmt.font = Some(font_name.clone());
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        b"paraPr" => {
-                            let mut id = None;
-                            let mut def = ParaStyleDef::default();
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"id" => id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                                    b"align" => {
-                                        if let Ok(a) = attr.unescape_value() {
-                                            def.align = parse_align(&a);
-                                        }
-                                    }
-                                    b"headingType" => {
-                                        if let Ok(h) = attr.unescape_value() {
-                                            if h.eq_ignore_ascii_case("outline") {
-                                                def.kind = Kind::Heading(1);
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if let Some(id) = id {
-                                current_para_pr_id = Some(id);
-                                data.para_props.insert(id, def);
-                            }
-                        }
-                        b"margin" => {
-                            if let Some(para_id) = current_para_pr_id {
-                                if let Some(def) = data.para_props.get_mut(&para_id) {
-                                    for attr in e.attributes().flatten() {
-                                        let key = attr.key.local_name();
-                                        if let Ok(v) = attr.unescape_value() {
-                                            if let Ok(hwpu) = v.parse::<i64>() {
-                                                let pt = hwpu_to_pt(hwpu);
-                                                match key.as_ref() {
-                                                    b"left" => def.spacing.left = Some(pt),
-                                                    b"right" => def.spacing.right = Some(pt),
-                                                    b"indent" => def.spacing.first = Some(pt),
-                                                    b"prev" => def.spacing.before = Some(pt),
-                                                    b"next" => def.spacing.after = Some(pt),
-                                                    _ => {}
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        b"borderFill" => {
-                            let mut id = None;
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"id" {
-                                    id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok());
-                                }
-                            }
-                            current_border_fill_id = id;
-                            if let Some(id) = id {
-                                data.border_fills.entry(id).or_insert(None);
-                            }
-                        }
-                        b"winBrush" => {
-                            if let Some(bf_id) = current_border_fill_id {
-                                for attr in e.attributes().flatten() {
-                                    if attr.key.local_name().as_ref() == b"faceColor" {
-                                        if let Ok(color_str) = attr.unescape_value() {
-                                            if let Some(color) = parse_color(&color_str) {
-                                                data.border_fills.insert(bf_id, Some(color));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        b"style" => {
-                            let mut id = None;
-                            let mut para_pr_id = None;
-                            let mut char_pr_id = None;
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"id" => id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                                    b"paraPrIDRef" => para_pr_id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                                    b"charPrIDRef" => char_pr_id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                                    _ => {}
-                                }
-                            }
-                            if let Some(id) = id {
-                                data.styles.insert(id, (para_pr_id, char_pr_id));
-                            }
-                        }
-                        _ => {}
-                    }
+        // Font ids count from 0 in each language group; characters name the Hangul one.
+        let mut fonts: HashMap<u32, Arc<str>> = HashMap::new();
+        let mut faces = Vec::new();
+        root.find_all("fontface", &mut faces);
+        for face in faces.iter().filter(|f| f.attr("lang").is_some_and(|l| l.eq_ignore_ascii_case("HANGUL"))) {
+            for font in face.elems().filter(|e| e.name == "font") {
+                if let (Some(i), Some(name)) = (id(font, "id"), font.attr("face").and_then(kept_font)) {
+                    fonts.insert(i, name);
                 }
-                Event::End(ref e) => {
-                    let local = e.local_name();
-                    if local.as_ref() == b"paraPr" {
-                        current_para_pr_id = None;
-                    } else if local.as_ref() == b"borderFill" {
-                        current_border_fill_id = None;
-                    }
-                }
-                Event::Eof => break,
-                _ => {}
             }
-            buf.clear();
         }
 
+        let mut list = Vec::new();
+        root.find_all("charPr", &mut list);
+        for e in &list {
+            if let Some(i) = id(e, "id") {
+                data.char_props.insert(i, char_pr(e, &fonts));
+            }
+        }
+
+        list.clear();
+        root.find_all("paraPr", &mut list);
+        for e in &list {
+            if let Some(i) = id(e, "id") {
+                data.para_props.insert(i, para_pr(e));
+            }
+        }
+
+        list.clear();
+        root.find_all("borderFill", &mut list);
+        for e in &list {
+            let color = e.find("winBrush").and_then(|b| b.attr("faceColor")).and_then(parse_color);
+            if let (Some(i), Some(c)) = (id(e, "id"), color) {
+                data.border_fills.insert(i, c);
+            }
+        }
+
+        list.clear();
+        root.find_all("style", &mut list);
+        for e in &list {
+            if let Some(i) = id(e, "id") {
+                data.styles.insert(i, (id(e, "paraPrIDRef"), id(e, "charPrIDRef")));
+            }
+        }
         data
     }
+}
+
+/// `<hh:charPr height textColor shadeColor>` with `fontRef`, `bold`, `italic`, `underline`,
+/// `strikeout`, `supscript` and `subscript` children.
+fn char_pr(e: &Elem, fonts: &HashMap<u32, Arc<str>>) -> Fmt {
+    let mut fmt = Fmt::default();
+    if let Some(h) = e.int("height").filter(|h| (100..=409_600).contains(h)) {
+        fmt.size = Some(hwpu_to_pt(h));
+    }
+    fmt.color = e.attr("textColor").and_then(parse_color).filter(|c| *c != Rgb(0, 0, 0));
+    fmt.background = e.attr("shadeColor").and_then(parse_color).filter(|c| *c != Rgb(0xFF, 0xFF, 0xFF));
+    fmt.font = e.child("fontRef").and_then(|f| id(f, "hangul")).and_then(|i| fonts.get(&i)).cloned();
+    fmt.bold = e.child("bold").is_some();
+    fmt.italic = e.child("italic").is_some();
+    fmt.underline = e.child("underline").and_then(|u| u.attr("type")).is_some_and(|t| t.eq_ignore_ascii_case("BOTTOM"));
+    fmt.strike = e.child("strikeout").and_then(|s| s.attr("shape")).is_some_and(|s| !s.eq_ignore_ascii_case("NONE"));
+    fmt.sup = e.child("supscript").is_some();
+    fmt.sub = e.child("subscript").is_some();
+    fmt
+}
+
+/// `<hh:paraPr>` with `align`, `breakSetting` and `margin` children. The margin sits in an
+/// `hp:switch`: its `hp:case` (the HwpUnitChar namespace) holds the true values, its `hp:default`
+/// the same doubled for older readers.
+fn para_pr(e: &Elem) -> ParaStyleDef {
+    let mut def = ParaStyleDef { align: e.child("align").and_then(|a| a.attr("horizontal")).and_then(parse_align), ..Default::default() };
+    if let Some(b) = e.child("breakSetting") {
+        def.page_break = b.flag("pageBreakBefore");
+        def.keep_next = b.flag("keepWithNext");
+    }
+    let switch = e.child("switch");
+    let margin = switch
+        .and_then(|s| s.child("case"))
+        .and_then(|c| c.child("margin"))
+        .map(|m| (m, 1.0))
+        .or_else(|| e.child("margin").map(|m| (m, 1.0)))
+        .or_else(|| switch.and_then(|s| s.child("default")).and_then(|d| d.child("margin")).map(|m| (m, 0.5)));
+    if let Some((m, scale)) = margin {
+        // Each value is a child (`<hc:left value unit>`); older writers put them on attributes.
+        let value = |name: &str| -> Option<f32> {
+            let v = match m.child(name) {
+                Some(c) if c.attr("unit").is_none_or(|u| u.eq_ignore_ascii_case("HWPUNIT")) => c.int("value"),
+                Some(_) => None,
+                None => m.int(name),
+            };
+            v.filter(|v| *v != 0 && v.abs() <= 1_440_000).map(|v| hwpu_to_pt(v) * scale)
+        };
+        def.spacing = Spacing {
+            left: value("left"),
+            right: value("right"),
+            first: value("intent").or_else(|| value("indent")),
+            before: value("prev"),
+            after: value("next"),
+            ..Default::default()
+        };
+    }
+    def
 }

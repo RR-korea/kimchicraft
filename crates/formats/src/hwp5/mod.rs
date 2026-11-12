@@ -1,10 +1,14 @@
 //! Legacy HWP 5.x binary format (OLE2 Compound File) import.
 
+use std::collections::HashMap;
 use std::io::{Cursor, Read};
+use std::sync::Arc;
+
 use cfb::CompoundFile;
 use wordcraft_doc::{Document, SectionProps};
 
-use crate::model::{self, Flow};
+use crate::hwp_doc::{self, MAX_PART, MAX_SECTIONS};
+use crate::model;
 
 mod header;
 pub mod record;
@@ -16,6 +20,9 @@ mod tests;
 pub use header::{DocInfo, FileHeader, HWP5_SIGNATURE};
 pub use section::SectionParser;
 
+/// Most bytes of embedded pictures read (hostile files); later pictures are left out.
+const MAX_PICTURES: usize = 512 << 20;
+
 /// Import `bytes` of an HWP 5.x binary file into a [`Document`].
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     import_on(bytes, &SectionProps::default())
@@ -24,84 +31,61 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
 /// Import `bytes` of an HWP 5.x binary file onto `page` properties.
 pub fn import_on(bytes: &[u8], page: &SectionProps) -> Result<Document, String> {
     model::begin_import();
-    let (flow, section_props) = parse(bytes, page)?;
-    let mut doc = model::to_doc_in(&flow, section_props);
-    doc.ensure_nonempty();
-    Ok(doc)
+    let sections = parse(bytes)?;
+    Ok(hwp_doc::to_doc(sections, page))
 }
 
-/// Parse an HWP 5.x binary stream into a [`Flow`] and [`SectionProps`].
-pub(crate) fn parse(bytes: &[u8], default_page: &SectionProps) -> Result<(Flow, SectionProps), String> {
-    let cursor = Cursor::new(bytes);
-    let mut comp = CompoundFile::open(cursor).map_err(|e| format!("CFB open error: {e}"))?;
+/// The sections of an HWP 5.x file.
+pub(crate) fn parse(bytes: &[u8]) -> Result<Vec<hwp_doc::Section>, String> {
+    let mut comp = CompoundFile::open(Cursor::new(bytes)).map_err(|e| format!("CFB open error: {e}"))?;
 
-    // 1. Read FileHeader stream
-    let file_header_bytes = read_stream(&mut comp, "/FileHeader")?;
-    let file_header = FileHeader::parse(&file_header_bytes)?;
-
+    let file_header = FileHeader::parse(&read_stream(&mut comp, "/FileHeader")?)?;
     if file_header.is_encrypted {
         return Err("Password-protected HWP files are not supported".to_string());
     }
+    if file_header.is_distribution {
+        return Err("HWP distribution documents (encrypted ViewText) are not supported".to_string());
+    }
+    let inflate = |raw: Vec<u8>| if file_header.is_compressed { decompress_stream(&raw) } else { Ok(raw) };
 
-    // 2. Read DocInfo stream
-    let doc_info_raw = read_stream(&mut comp, "/DocInfo")?;
-    let doc_info_bytes = if file_header.is_compressed {
-        decompress_stream(&doc_info_raw)?
-    } else {
-        doc_info_raw
-    };
-    let doc_info = DocInfo::parse(&doc_info_bytes);
+    let doc_info = DocInfo::parse(&inflate(read_stream(&mut comp, "/DocInfo")?)?);
 
-    let mut flow = Flow::default();
-    let mut section_props = default_page.clone();
-
-    // 3. Read BodyText/Section* streams
-    let mut section_idx = 0;
-    loop {
-        let stream_path = format!("/BodyText/Section{section_idx}");
-        let Ok(raw_section) = read_stream(&mut comp, &stream_path) else {
-            break;
-        };
-
-        let section_bytes = if file_header.is_compressed {
-            decompress_stream(&raw_section)?
-        } else {
-            raw_section
-        };
-
-        let parser = SectionParser::new(&doc_info);
-        let blocks = parser.parse_section(&section_bytes, &mut section_props);
-        flow.blocks.extend(blocks);
-
-        section_idx += 1;
-        if section_idx > 100 {
-            // Safety bound against corrupted section sequences
+    // Embedded pictures by the number pictures refer to them with (from 1), up to MAX_PICTURES bytes.
+    let mut images: HashMap<usize, Arc<Vec<u8>>> = HashMap::new();
+    let mut total = 0usize;
+    for (i, item) in doc_info.bin_items.iter().enumerate() {
+        let Some(item) = item else { continue };
+        let Ok(raw) = read_stream(&mut comp, &format!("/BinData/BIN{:04X}.{}", item.id, item.ext)) else { continue };
+        let data = if item.compressed.unwrap_or(file_header.is_compressed) { decompress_stream(&raw).unwrap_or(raw) } else { raw };
+        total = total.saturating_add(data.len());
+        if total > MAX_PICTURES {
             break;
         }
+        images.insert(i + 1, Arc::new(data));
     }
 
-    if flow.blocks.is_empty() {
+    let mut sections = Vec::new();
+    for i in 0..MAX_SECTIONS {
+        let Ok(raw) = read_stream(&mut comp, &format!("/BodyText/Section{i}")) else { break };
+        sections.push(SectionParser::new(&doc_info, &images).parse(&inflate(raw)?));
+    }
+    if sections.is_empty() {
         return Err("No text sections found in HWP document".to_string());
     }
-
-    Ok((flow, section_props))
+    Ok(sections)
 }
 
-/// Helper to read an entire stream from a CompoundFile.
+/// An entire stream of `comp`, up to [`MAX_PART`] bytes.
 fn read_stream(comp: &mut CompoundFile<Cursor<&[u8]>>, path: &str) -> Result<Vec<u8>, String> {
-    let mut stream = comp.open_stream(path).map_err(|e| format!("Stream '{path}' not found: {e}"))?;
+    let stream = comp.open_stream(path).map_err(|e| format!("Stream '{path}' not found: {e}"))?;
     let mut buf = Vec::new();
-    stream.read_to_end(&mut buf).map_err(|e| format!("Read stream '{path}' failed: {e}"))?;
+    stream.take(MAX_PART as u64).read_to_end(&mut buf).map_err(|e| format!("Read stream '{path}' failed: {e}"))?;
     Ok(buf)
 }
 
-/// Decompress raw deflate or zlib stream data.
+/// Inflate a stream: raw deflate (what HWP writes), else zlib, up to [`MAX_PART`] bytes.
 fn decompress_stream(data: &[u8]) -> Result<Vec<u8>, String> {
-    if let Ok(vec) = miniz_oxide::inflate::decompress_to_vec(data) {
-        return Ok(vec);
-    }
-    if let Ok(vec) = miniz_oxide::inflate::decompress_to_vec_zlib(data) {
-        return Ok(vec);
-    }
-    Err("HWP stream decompression failed".to_string())
+    miniz_oxide::inflate::decompress_to_vec_with_limit(data, MAX_PART)
+        .or_else(|_| miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(data, MAX_PART))
+        .map_err(|_| "HWP stream decompression failed".to_string())
 }

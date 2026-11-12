@@ -13,6 +13,7 @@
 pub mod comments;
 pub mod html;
 pub mod hwp5;
+mod hwp_doc;
 pub mod hwpx;
 pub mod latex;
 pub mod markdown;

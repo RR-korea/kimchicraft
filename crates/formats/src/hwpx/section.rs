@@ -1,408 +1,254 @@
-//! Section parser for HWPX documents (`Contents/section*.xml`).
+//! Section parser for HWPX documents (`Contents/section*.xml`): paragraphs and their runs, with
+//! the section's page, tables, pictures, notes, headers, footers and text boxes.
 
-use std::io::Cursor;
-
-use quick_xml::Reader;
-use quick_xml::events::Event;
 use wordcraft_doc::SectionProps;
+use wordcraft_doc::props::VAlign;
 
-use crate::model::{
-    Cell, FBlock, FTable, Flow, Fmt, Inline, Kind, Para, clean_text, make_img,
-};
 use super::header::HeaderData;
 use super::package::Package;
 use super::styles::hwpu_to_pt;
+use super::xml::{self, Elem, Node};
+use crate::hwp_doc::{Section, push_table, table_from_grid};
+use crate::model::{Cell, FBlock, FTable, Fmt, Inline, MAX_DEPTH, Para, char_props, clean_text, make_img};
 
 pub struct SectionParser<'a, 'p> {
     header: &'a HeaderData,
     package: &'a mut Package<'p>,
+    section: Section,
 }
 
 impl<'a, 'p> SectionParser<'a, 'p> {
     pub fn new(header: &'a HeaderData, package: &'a mut Package<'p>) -> Self {
-        SectionParser { header, package }
+        SectionParser { header, package, section: Section::default() }
     }
 
-    pub fn parse_section(&mut self, xml: &[u8], page: &mut SectionProps) -> Vec<FBlock> {
-        let mut reader = Reader::from_reader(Cursor::new(xml));
-        reader.config_mut().trim_text(false);
-        let mut buf = Vec::with_capacity(1024);
-
+    /// The section stored in `xml` (an `hs:sec`).
+    pub(crate) fn parse(mut self, xml: &[u8]) -> Section {
         let mut blocks = Vec::new();
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"secPr" => {
-                            self.parse_sec_pr(&mut reader, page);
-                        }
-                        b"p" => {
-                            if let Some(para) = self.parse_para(e, &mut reader, &mut blocks) {
-                                blocks.push(FBlock::Para(para));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
+        if let Some(root) = xml::parse(xml) {
+            self.paras(&root, &mut blocks, 0);
         }
-
-        blocks
+        self.section.blocks = blocks;
+        self.section
     }
 
-    fn parse_sec_pr(&mut self, reader: &mut Reader<Cursor<&[u8]>>, page: &mut SectionProps) {
-        let mut buf = Vec::with_capacity(512);
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) | Event::Empty(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"pagePr" => {
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"width" => {
-                                        if let Ok(w) = attr.unescape_value() {
-                                            if let Ok(hwpu) = w.parse::<i64>() {
-                                                page.page_w = hwpu_to_pt(hwpu);
-                                            }
-                                        }
-                                    }
-                                    b"height" => {
-                                        if let Ok(h) = attr.unescape_value() {
-                                            if let Ok(hwpu) = h.parse::<i64>() {
-                                                page.page_h = hwpu_to_pt(hwpu);
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        b"margin" => {
-                            for attr in e.attributes().flatten() {
-                                if let Ok(val) = attr.unescape_value() {
-                                    if let Ok(hwpu) = val.parse::<i64>() {
-                                        let pt = hwpu_to_pt(hwpu);
-                                        match attr.key.local_name().as_ref() {
-                                            b"left" => page.margin_left = pt,
-                                            b"right" => page.margin_right = pt,
-                                            b"top" => page.margin_top = pt,
-                                            b"bottom" => page.margin_bottom = pt,
-                                            b"header" => page.header = pt,
-                                            b"footer" => page.footer = pt,
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::End(ref e) if e.local_name().as_ref() == b"secPr" => break,
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
+    /// The `hp:p` children of `parent` (a section or an `hp:subList`).
+    fn paras(&mut self, parent: &Elem, out: &mut Vec<FBlock>, depth: usize) {
+        for p in parent.elems().filter(|e| e.name == "p") {
+            self.para(p, out, depth);
         }
     }
 
-    fn parse_para(
-        &mut self,
-        start_elem: &quick_xml::events::BytesStart,
-        reader: &mut Reader<Cursor<&[u8]>>,
-        blocks_out: &mut Vec<FBlock>,
-    ) -> Option<Para> {
-        let mut para = Para::default();
+    fn para(&mut self, e: &Elem, out: &mut Vec<FBlock>, depth: usize) {
+        let mut p = Para::default();
+        let style_para = e.int("styleIDRef").and_then(|s| self.header.styles.get(&(s as u32))).and_then(|(p, _)| *p);
+        let para_pr = e.int("paraPrIDRef").map(|v| v as u32).or(style_para);
+        if let Some(def) = para_pr.and_then(|id| self.header.para_props.get(&id)) {
+            p.align = def.align;
+            p.spacing = def.spacing;
+            p.page_break = def.page_break;
+            p.keep_next = def.keep_next;
+        }
+        p.page_break |= e.flag("pageBreak");
 
-        let mut para_pr_id = None;
-        let mut style_id = None;
-
-        for attr in start_elem.attributes().flatten() {
-            match attr.key.local_name().as_ref() {
-                b"paraPrIDRef" => para_pr_id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                b"styleIDRef" => style_id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok()),
-                b"pageBreak" => {
-                    if let Ok(v) = attr.unescape_value() {
-                        para.page_break = v == "1" || v.eq_ignore_ascii_case("true");
+        let mut after = Vec::new();
+        let mut split = false;
+        let mut first_fmt = None;
+        for run in e.elems().filter(|r| r.name == "run") {
+            let fmt = run.int("charPrIDRef").and_then(|id| self.header.char_props.get(&(id as u32))).cloned().unwrap_or_default();
+            first_fmt.get_or_insert_with(|| fmt.clone());
+            for obj in run.elems() {
+                match obj.name.as_str() {
+                    "t" => push_t(&mut p, obj, &fmt),
+                    "secPr" => {
+                        if self.section.page.is_none() {
+                            self.section.page = sec_pr(obj);
+                        }
                     }
-                }
-                _ => {}
-            }
-        }
-
-        // Apply style and paraPr
-        if let Some(sid) = style_id {
-            if let Some(&(p_id, _)) = self.header.styles.get(&sid) {
-                if para_pr_id.is_none() {
-                    para_pr_id = p_id;
-                }
-            }
-        }
-        if let Some(pid) = para_pr_id {
-            if let Some(def) = self.header.para_props.get(&pid) {
-                para.align = def.align;
-                para.kind = def.kind;
-                para.spacing = def.spacing;
-            }
-        }
-
-        let mut current_char_pr_id = None;
-        let mut in_text = false;
-        let mut buf = Vec::with_capacity(512);
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"run" => {
-                            current_char_pr_id = None;
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"charPrIDRef" {
-                                    current_char_pr_id = attr.unescape_value().ok().and_then(|v| v.parse::<u32>().ok());
-                                }
+                    "ctrl" if depth < MAX_DEPTH => self.ctrl(obj, &mut p, depth + 1),
+                    "tbl" if depth < MAX_DEPTH => {
+                        if let Some(table) = self.table(obj, depth + 1) {
+                            if !p.inlines.is_empty() {
+                                out.push(FBlock::Para(p.clone()));
+                                p.inlines.clear();
+                                p.page_break = false;
                             }
-                        }
-                        b"t" => {
-                            in_text = true;
-                        }
-                        b"tbl" => {
-                            if let Some(table) = self.parse_table(reader) {
-                                // If current paragraph has text, save it first
-                                if !para.is_empty() {
-                                    blocks_out.push(FBlock::Para(std::mem::take(&mut para)));
-                                }
-                                blocks_out.push(FBlock::Table(table));
+                            let (caption, below) = self.caption(obj, depth + 1);
+                            if below {
+                                push_table(out, table);
+                                out.extend(caption);
+                            } else {
+                                out.extend(caption);
+                                push_table(out, table);
                             }
-                        }
-                        b"pic" => {
-                            if let Some(inline_img) = self.parse_picture(reader) {
-                                para.inlines.push(inline_img);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::Text(ref e) => {
-                    if in_text {
-                        if let Ok(t) = e.decode() {
-                            let fmt = current_char_pr_id
-                                .and_then(|cid| self.header.char_props.get(&cid).cloned())
-                                .unwrap_or_default();
-                            para.push_text(&clean_text(&t), &fmt);
+                            split = true;
                         }
                     }
-                }
-                Event::End(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"t" => in_text = false,
-                        b"run" => current_char_pr_id = None,
-                        b"p" => break,
-                        _ => {}
+                    "pic" if depth < MAX_DEPTH => {
+                        if let Some(img) = self.picture(obj) {
+                            p.inlines.push(img);
+                        }
+                        after.extend(self.caption(obj, depth + 1).0);
                     }
+                    // Drawing objects keep the text of their text boxes, after the paragraph.
+                    _ if depth < MAX_DEPTH => {
+                        let mut lists = Vec::new();
+                        obj.find_all("subList", &mut lists);
+                        for list in lists {
+                            self.paras(list, &mut after, depth + 1);
+                        }
+                    }
+                    _ => {}
                 }
-                Event::Eof => break,
-                _ => {}
             }
-            buf.clear();
         }
-
-        Some(para)
+        if p.inlines.is_empty()
+            && let Some(f) = first_fmt
+        {
+            p.mark = Some(Box::new(char_props(&f)));
+        }
+        // A paragraph that only anchored a table leaves no empty line behind it.
+        if !(split && p.inlines.is_empty()) {
+            out.push(FBlock::Para(p));
+        }
+        out.append(&mut after);
     }
 
-    fn parse_table(&mut self, reader: &mut Reader<Cursor<&[u8]>>) -> Option<FTable> {
+    /// The paragraphs of an object's `hp:caption`, and whether they go after it (`side` RIGHT or
+    /// BOTTOM).
+    fn caption(&mut self, obj: &Elem, depth: usize) -> (Vec<FBlock>, bool) {
+        let mut blocks = Vec::new();
+        let Some(cap) = obj.child("caption") else { return (blocks, false) };
+        if let Some(list) = cap.child("subList") {
+            self.paras(list, &mut blocks, depth);
+        }
+        (blocks, matches!(cap.attr("side"), Some("BOTTOM" | "RIGHT")))
+    }
+
+    /// `hp:ctrl`: headers, footers and notes (column, field and number controls hold no text).
+    fn ctrl(&mut self, ctrl: &Elem, p: &mut Para, depth: usize) {
+        for c in ctrl.elems() {
+            let mut blocks = Vec::new();
+            if let Some(list) = c.child("subList") {
+                self.paras(list, &mut blocks, depth);
+            }
+            match c.name.as_str() {
+                "header" if self.section.header.is_none() && !blocks.is_empty() => self.section.header = Some(blocks),
+                "footer" if self.section.footer.is_none() && !blocks.is_empty() => self.section.footer = Some(blocks),
+                "footNote" | "endNote" => {
+                    p.inlines.push(Inline::Note { endnote: c.name == "endNote", custom: String::new(), blocks, fmt: Fmt::default() });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// `hp:tbl` → `hp:tr` → `hp:tc`, each cell an `hp:subList` with `hp:cellAddr`, `hp:cellSpan`
+    /// and `hp:cellSz`. Cells go where their address puts them; without addresses, in row order.
+    fn table(&mut self, tbl: &Elem, depth: usize) -> Option<FTable> {
+        // (row of the hp:tr, address, cell)
+        let mut cells: Vec<(usize, Option<(usize, usize)>, Cell)> = Vec::new();
+        for (r, tr) in tbl.elems().filter(|e| e.name == "tr").enumerate() {
+            for tc in tr.elems().filter(|e| e.name == "tc") {
+                let span = tc.child("cellSpan");
+                let colspan = span.and_then(|s| s.int("colSpan")).map_or(1, |v| v.clamp(1, 63) as u32);
+                let rowspan = span.and_then(|s| s.int("rowSpan")).map_or(1, |v| v.clamp(1, 4096) as u32);
+                let mut cell = Cell { colspan, rowspan, ..Default::default() };
+                if colspan == 1 {
+                    cell.width = tc.child("cellSz").and_then(|s| s.int("width")).filter(|w| (1..=1_440_000).contains(w)).map(hwpu_to_pt);
+                }
+                cell.shading = tc.int("borderFillIDRef").and_then(|id| self.header.border_fills.get(&(id as u32))).copied();
+                if let Some(list) = tc.child("subList") {
+                    cell.valign = match list.attr("vertAlign") {
+                        Some("CENTER") => Some(VAlign::Center),
+                        Some("BOTTOM") => Some(VAlign::Bottom),
+                        _ => None,
+                    };
+                    self.paras(list, &mut cell.blocks, depth);
+                }
+                if cell.blocks.is_empty() {
+                    cell.blocks.push(FBlock::Para(Para::default()));
+                }
+                let addr =
+                    tc.child("cellAddr").and_then(|a| Some((usize::try_from(a.int("rowAddr")?).ok()?, usize::try_from(a.int("colAddr")?).ok()?)));
+                cells.push((r, addr, cell));
+            }
+        }
+        if cells.iter().all(|(_, addr, _)| addr.is_some()) {
+            return table_from_grid(cells.into_iter().filter_map(|(_, addr, cell)| addr.map(|(r, c)| (r, c, cell))).collect());
+        }
         let mut table = FTable::default();
-        let mut buf = Vec::with_capacity(512);
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) => {
-                    if e.local_name().as_ref() == b"tr" {
-                        let row = self.parse_table_row(reader);
-                        if !row.is_empty() {
-                            table.rows.push(row);
-                        }
-                    }
-                }
-                Event::End(ref e) if e.local_name().as_ref() == b"tbl" => break,
-                Event::Eof => break,
-                _ => {}
+        for (r, _, cell) in cells {
+            if table.rows.len() <= r {
+                table.rows.resize_with(r + 1, Vec::new);
             }
-            buf.clear();
+            if let Some(row) = table.rows.get_mut(r) {
+                row.push(cell);
+            }
         }
-
+        table.rows.retain(|row| !row.is_empty());
         if table.rows.is_empty() {
             return None;
         }
-
-        table.widths_from_cells();
         table.insert_covered();
+        table.widths_from_cells();
         Some(table)
     }
 
-    fn parse_table_row(&mut self, reader: &mut Reader<Cursor<&[u8]>>) -> Vec<Cell> {
-        let mut row = Vec::new();
-        let mut buf = Vec::with_capacity(512);
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) => {
-                    if e.local_name().as_ref() == b"tc" {
-                        let cell = self.parse_table_cell(e, reader);
-                        row.push(cell);
-                    }
-                }
-                Event::End(ref e) if e.local_name().as_ref() == b"tr" => break,
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
-        }
-
-        row
+    /// `hp:pic`: the picture `hc:img binaryItemIDRef` names, at its `hp:sz` (else `hp:orgSz`).
+    fn picture(&mut self, pic: &Elem) -> Option<Inline> {
+        let id = pic.find("img")?.attr("binaryItemIDRef")?.to_string();
+        let size = |name: &str| {
+            let s = pic.child(name)?;
+            let (w, h) = (s.int("width")?, s.int("height")?);
+            ((1..=1_440_000).contains(&w) && (1..=1_440_000).contains(&h)).then(|| (hwpu_to_pt(w), hwpu_to_pt(h)))
+        };
+        let (w, h) = size("sz").or_else(|| size("orgSz")).unzip();
+        let bytes = self.package.read_image(&id)?;
+        make_img(bytes, w, h, "").map(Inline::Image)
     }
+}
 
-    fn parse_table_cell(
-        &mut self,
-        start_elem: &quick_xml::events::BytesStart,
-        reader: &mut Reader<Cursor<&[u8]>>,
-    ) -> Cell {
-        let mut cell = Cell::default();
-
-        for attr in start_elem.attributes().flatten() {
-            if attr.key.local_name().as_ref() == b"borderFillIDRef" {
-                if let Ok(id_str) = attr.unescape_value() {
-                    if let Ok(id) = id_str.parse::<u32>() {
-                        if let Some(&Some(color)) = self.header.border_fills.get(&id) {
-                            cell.shading = Some(color);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut buf = Vec::with_capacity(512);
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) | Event::Empty(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"cellSpan" => {
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"colSpan" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            if let Ok(span) = v.parse::<u32>() {
-                                                cell.colspan = span.max(1);
-                                            }
-                                        }
-                                    }
-                                    b"rowSpan" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            if let Ok(span) = v.parse::<u32>() {
-                                                cell.rowspan = span.max(1);
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        b"cellSz" => {
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"width" {
-                                    if let Ok(v) = attr.unescape_value() {
-                                        if let Ok(hwpu) = v.parse::<i64>() {
-                                            cell.width = Some(hwpu_to_pt(hwpu));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        b"p" => {
-                            let mut cell_blocks = Vec::new();
-                            if let Some(p) = self.parse_para(e, reader, &mut cell_blocks) {
-                                cell_blocks.push(FBlock::Para(p));
-                            }
-                            cell.blocks.extend(cell_blocks);
-                        }
-                        _ => {}
-                    }
-                }
-                Event::End(ref e) if e.local_name().as_ref() == b"tc" => break,
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
-        }
-
-        if cell.blocks.is_empty() {
-            cell.blocks.push(FBlock::Para(Para::default()));
-        }
-
-        cell
+/// The text of `hp:t`, with its tab, line break and space elements.
+fn push_t(p: &mut Para, t: &Elem, fmt: &Fmt) {
+    for n in &t.children {
+        let s = match n {
+            Node::Text(s) => clean_text(s),
+            Node::Elem(e) => match e.name.as_str() {
+                "tab" => "\t".to_string(),
+                "lineBreak" => "\n".to_string(),
+                "nbSpace" => "\u{a0}".to_string(),
+                "fwSpace" => " ".to_string(),
+                "hyphen" => "-".to_string(),
+                _ => continue,
+            },
+        };
+        p.push_text(&s, fmt);
     }
+}
 
-    fn parse_picture(&mut self, reader: &mut Reader<Cursor<&[u8]>>) -> Option<Inline> {
-        let mut bin_id = None;
-        let mut width_pt = 100.0f32;
-        let mut height_pt = 100.0f32;
-        let mut buf = Vec::with_capacity(512);
-
-        while let Ok(event) = reader.read_event_into(&mut buf) {
-            match event {
-                Event::Start(ref e) | Event::Empty(ref e) => {
-                    let local = e.local_name();
-                    match local.as_ref() {
-                        b"img" => {
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"binItemIDRef" {
-                                    bin_id = attr.unescape_value().ok().map(|v| v.to_string());
-                                }
-                            }
-                        }
-                        b"sz" => {
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"width" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            if let Ok(hwpu) = v.parse::<i64>() {
-                                                width_pt = hwpu_to_pt(hwpu);
-                                            }
-                                        }
-                                    }
-                                    b"height" => {
-                                        if let Ok(v) = attr.unescape_value() {
-                                            if let Ok(hwpu) = v.parse::<i64>() {
-                                                height_pt = hwpu_to_pt(hwpu);
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::End(ref e) if e.local_name().as_ref() == b"pic" => break,
-                Event::Eof => break,
-                _ => {}
-            }
-            buf.clear();
-        }
-
-        let id = bin_id?;
-        let (bytes, _) = self.package.read_image(&id)?;
-        let img = make_img(bytes, Some(width_pt), Some(height_pt), "")?;
-        Some(Inline::Image(img))
+/// `hp:secPr` → `hp:pagePr landscape width height` with its `hp:margin`. `NARROWLY` turns the
+/// paper (its width and height stay those of the upright sheet).
+fn sec_pr(sec: &Elem) -> Option<SectionProps> {
+    let pp = sec.child("pagePr")?;
+    let pt = |e: &Elem, k: &str| e.int(k).filter(|v| (0..=1_440_000).contains(v)).map(hwpu_to_pt);
+    let (mut w, mut h) = (pt(pp, "width").filter(|v| *v > 0.0)?, pt(pp, "height").filter(|v| *v > 0.0)?);
+    if pp.attr("landscape") == Some("NARROWLY") {
+        std::mem::swap(&mut w, &mut h);
     }
+    let mut page = SectionProps { page_w: w, page_h: h, ..SectionProps::default() };
+    if let Some(m) = pp.child("margin") {
+        let set = |slot: &mut f32, k: &str| {
+            if let Some(v) = pt(m, k) {
+                *slot = v;
+            }
+        };
+        set(&mut page.margin_left, "left");
+        set(&mut page.margin_right, "right");
+        set(&mut page.margin_top, "top");
+        set(&mut page.margin_bottom, "bottom");
+        set(&mut page.header, "header");
+        set(&mut page.footer, "footer");
+    }
+    Some(page)
 }

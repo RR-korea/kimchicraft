@@ -1,43 +1,36 @@
-//! HWP 5.x hierarchical record structure and parsing.
+//! HWP 5.x records: the 32-bit header (tag, level, size) and the tree their levels make.
 
-/// A single HWP 5.x record.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Record {
-    pub tag_id: u16,
-    pub level: u16,
-    pub size: usize,
-    pub data: Vec<u8>,
-}
-
+/// Record tags: HWPTAG_BEGIN (0x10) plus the index the HWP 5.0 specification gives each.
 pub mod tags {
-    // DocInfo tags (HWPTAG_BEGIN = 0x10)
-    pub const DOCUMENT_PROPERTIES: u16 = 0x10;
     pub const ID_MAPPINGS: u16 = 0x11;
     pub const BIN_DATA: u16 = 0x12;
     pub const FACE_NAME: u16 = 0x13;
-    pub const BORDER_FILL: u16 = 0x14;
     pub const CHAR_SHAPE: u16 = 0x15;
-    pub const TAB_DEF: u16 = 0x16;
-    pub const NUMBERING: u16 = 0x17;
-    pub const PARA_SHAPE: u16 = 0x18;
-    pub const STYLE: u16 = 0x19;
-
-    // BodyText tags (HWPTAG_BEGIN(0x10) + index)
-    pub const PARA_HEADER: u16 = 0x42;      // 66 (0x10 + 50)
-    pub const PARA_TEXT: u16 = 0x43;        // 67 (0x10 + 51)
-    pub const PARA_CHAR_SHAPE: u16 = 0x44;  // 68 (0x10 + 52)
-    pub const PARA_LINE_SEG: u16 = 0x45;    // 69 (0x10 + 53)
-    pub const PARA_RANGE_TAG: u16 = 0x46;   // 70 (0x10 + 54)
-    pub const CTRL_HEADER: u16 = 0x47;      // 71 (0x10 + 55)
-    pub const LIST_HEADER: u16 = 0x48;      // 72 (0x10 + 56)
-    pub const PAGE_DEF: u16 = 0x49;         // 73 (0x10 + 57)
-    pub const FOOTNOTE_DEF: u16 = 0x4A;     // 74 (0x10 + 58)
-    pub const PAGE_BORDER_FILL: u16 = 0x4B; // 75 (0x10 + 59)
-    pub const SHAPE_COMPONENT: u16 = 0x4C;  // 76 (0x10 + 60)
-    pub const TABLE: u16 = 0x4D;            // 77 (0x10 + 61)
+    pub const BULLET: u16 = 0x18;
+    pub const PARA_SHAPE: u16 = 0x19;
+    pub const STYLE: u16 = 0x1A;
+    pub const PARA_HEADER: u16 = 0x42;
+    pub const PARA_TEXT: u16 = 0x43;
+    pub const PARA_CHAR_SHAPE: u16 = 0x44;
+    pub const CTRL_HEADER: u16 = 0x47;
+    pub const LIST_HEADER: u16 = 0x48;
+    pub const PAGE_DEF: u16 = 0x49;
+    pub const TABLE: u16 = 0x4D;
+    pub const SHAPE_PICTURE: u16 = 0x55;
 }
 
-/// Reads records sequentially from a decompressed HWP 5.x stream.
+/// Deepest record nesting kept (hostile files); deeper records are left out.
+const MAX_LEVEL: usize = 64;
+
+/// One record: its tag, level and payload (cut short when the stream ends early).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Record<'a> {
+    pub tag: u16,
+    pub level: u16,
+    pub data: &'a [u8],
+}
+
+/// The records of a decompressed stream, in order.
 pub struct RecordReader<'a> {
     stream: &'a [u8],
     offset: usize,
@@ -47,62 +40,87 @@ impl<'a> RecordReader<'a> {
     pub fn new(stream: &'a [u8]) -> Self {
         RecordReader { stream, offset: 0 }
     }
+}
 
-    /// Read the next record in the stream.
-    pub fn next_record(&mut self) -> Option<Record> {
-        if self.offset + 4 > self.stream.len() {
-            return None;
-        }
+impl<'a> Iterator for RecordReader<'a> {
+    type Item = Record<'a>;
 
-        let header_bytes = &self.stream[self.offset..self.offset + 4];
-        let header = u32::from_le_bytes([
-            header_bytes[0],
-            header_bytes[1],
-            header_bytes[2],
-            header_bytes[3],
-        ]);
+    fn next(&mut self) -> Option<Record<'a>> {
+        let header = u32_at(self.stream, self.offset)?;
         self.offset += 4;
-
-        let tag_id = (header & 0x3FF) as u16;          // Bits 0..9 (10 bits)
-        let level = ((header >> 10) & 0x3FF) as u16;   // Bits 10..19 (10 bits)
-        let mut size = ((header >> 20) & 0xFFF) as usize; // Bits 20..31 (12 bits)
-
-        // If size is 0xFFF (4095), the actual size is stored in the next 4 bytes.
+        let tag = (header & 0x3FF) as u16;
+        let level = ((header >> 10) & 0x3FF) as u16;
+        let mut size = (header >> 20) as usize;
+        // 0xFFF: the size follows as a 32-bit value.
         if size == 0xFFF {
-            if self.offset + 4 > self.stream.len() {
-                return None;
-            }
-            let extended_bytes = &self.stream[self.offset..self.offset + 4];
-            size = u32::from_le_bytes([
-                extended_bytes[0],
-                extended_bytes[1],
-                extended_bytes[2],
-                extended_bytes[3],
-            ]) as usize;
+            size = u32_at(self.stream, self.offset)? as usize;
             self.offset += 4;
         }
-
-        if self.offset + size > self.stream.len() {
-            // Guard against corrupted record payload lengths
-            let available = self.stream.len().saturating_sub(self.offset);
-            let payload = self.stream[self.offset..self.offset + available].to_vec();
-            self.offset = self.stream.len();
-            return Some(Record {
-                tag_id,
-                level,
-                size: available,
-                data: payload,
-            });
-        }
-
-        let payload = self.stream[self.offset..self.offset + size].to_vec();
-        self.offset += size;
-
-        Some(Record {
-            tag_id,
-            level,
-            size,
-            data: payload,
-        })
+        let end = self.offset.saturating_add(size).min(self.stream.len());
+        let data = self.stream.get(self.offset..end).unwrap_or_default();
+        self.offset = end;
+        Some(Record { tag, level, data })
     }
+}
+
+/// A record and the records under it (those after it one level deeper).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node<'a> {
+    pub rec: Record<'a>,
+    pub children: Vec<Node<'a>>,
+}
+
+impl<'a> Node<'a> {
+    /// The first child with `tag`.
+    pub fn child(&self, tag: u16) -> Option<&Node<'a>> {
+        self.children.iter().find(|n| n.rec.tag == tag)
+    }
+}
+
+/// The records of `stream` as a tree. A record deeper than the one before it by more than one
+/// level is taken as its child all the same.
+pub fn tree(stream: &[u8]) -> Vec<Node<'_>> {
+    let mut roots = Vec::new();
+    let mut open: Vec<Node> = Vec::new();
+    for rec in RecordReader::new(stream) {
+        while open.last().is_some_and(|n| n.rec.level >= rec.level) {
+            close(&mut open, &mut roots);
+        }
+        if open.len() >= MAX_LEVEL {
+            continue;
+        }
+        open.push(Node { rec, children: Vec::new() });
+    }
+    while !open.is_empty() {
+        close(&mut open, &mut roots);
+    }
+    roots
+}
+
+fn close<'a>(open: &mut Vec<Node<'a>>, roots: &mut Vec<Node<'a>>) {
+    if let Some(n) = open.pop() {
+        match open.last_mut() {
+            Some(parent) => parent.children.push(n),
+            None => roots.push(n),
+        }
+    }
+}
+
+/// `d` as little-endian UTF-16 units (a trailing odd byte is left out).
+pub fn utf16_units(d: &[u8]) -> Vec<u16> {
+    d.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect()
+}
+
+pub fn u16_at(d: &[u8], at: usize) -> Option<u16> {
+    let b = d.get(at..at.checked_add(2)?)?;
+    Some(u16::from_le_bytes([b[0], b[1]]))
+}
+
+pub fn u32_at(d: &[u8], at: usize) -> Option<u32> {
+    let b = d.get(at..at.checked_add(4)?)?;
+    Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+}
+
+pub fn i32_at(d: &[u8], at: usize) -> Option<i32> {
+    u32_at(d, at).map(|v| v as i32)
 }

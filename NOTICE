@@ -12,6 +12,9 @@ Third-party material
 This product bundles third-party material under its own licenses, listed below. The per-file
 list (author, source, license) is in ATTRIBUTION.md.
 
+- HWP file format: the HWP 5.x reader (crates/formats/src/hwp5) was written with reference to
+  Hancom's published HWP document file (.hwp) format documents. 본 제품은 한글과컴퓨터의 HWP 문서
+  파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
 - Source Sans 3 and Source Serif 4 (assets/fonts/Source*) — SIL Open Font License 1.1. See assets/fonts/OFL-SourceSans3.txt, OFL-SourceSerif4.txt.
 - Inter (assets/fonts/Inter-*.ttf) — SIL Open Font License 1.1. See assets/fonts/OFL-Inter.txt.
 - JetBrains Mono (assets/fonts/JetBrainsMono-*.ttf) — SIL Open Font License 1.1. See assets/fonts/OFL-JetBrainsMono.txt.

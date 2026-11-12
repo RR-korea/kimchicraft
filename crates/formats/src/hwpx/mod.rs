@@ -1,14 +1,16 @@
-//! HWPX (Hancom Office HWPX, KS X 6101) document import.
+//! HWPX (Hancom Office HWPX, KS X 6101) document import and export.
 
 use wordcraft_doc::{Document, SectionProps};
 
-use crate::model::{self, Flow};
+use crate::hwp_doc;
+use crate::model;
 
 pub mod export;
 mod header;
 mod package;
 mod section;
 pub mod styles;
+mod xml;
 
 #[cfg(test)]
 mod tests;
@@ -24,37 +26,26 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
 /// Import `bytes` of an HWPX package onto `page` properties.
 pub fn import_on(bytes: &[u8], page: &SectionProps) -> Result<Document, String> {
     model::begin_import();
-    let (flow, section_props) = parse(bytes, page)?;
-    let mut doc = model::to_doc_in(&flow, section_props);
-    doc.ensure_nonempty();
-    Ok(doc)
+    let sections = parse(bytes)?;
+    Ok(hwp_doc::to_doc(sections, page))
 }
 
-/// Parse an HWPX package into a [`Flow`] and [`SectionProps`].
-pub(crate) fn parse(bytes: &[u8], default_page: &SectionProps) -> Result<(Flow, SectionProps), String> {
+/// The sections of an HWPX package.
+pub(crate) fn parse(bytes: &[u8]) -> Result<Vec<hwp_doc::Section>, String> {
     let mut package = Package::open(bytes)?;
-
-    let header = if let Some(header_xml) = package.header_xml() {
-        header::HeaderData::parse(&header_xml)
-    } else {
-        header::HeaderData::default()
-    };
-
-    let mut flow = Flow::default();
-    let mut section_props = default_page.clone();
-
-    let section_paths = package.section_paths().to_vec();
-    if section_paths.is_empty() {
+    let header = package.header_xml().map(|xml| header::HeaderData::parse(&xml)).unwrap_or_default();
+    let paths = package.section_paths().to_vec();
+    if paths.is_empty() {
         return Err("No sections found in HWPX package".to_string());
     }
-
-    for path in section_paths {
+    let mut sections = Vec::new();
+    for path in paths {
         if let Some(xml) = package.read_entry(&path) {
-            let mut parser = section::SectionParser::new(&header, &mut package);
-            let blocks = parser.parse_section(&xml, &mut section_props);
-            flow.blocks.extend(blocks);
+            sections.push(section::SectionParser::new(&header, &mut package).parse(&xml));
         }
     }
-
-    Ok((flow, section_props))
+    if sections.is_empty() {
+        return Err("No readable sections in HWPX package".to_string());
+    }
+    Ok(sections)
 }

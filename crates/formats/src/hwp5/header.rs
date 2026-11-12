@@ -3,8 +3,8 @@
 use std::sync::Arc;
 use wordcraft_doc::{Align, Rgb};
 
-use crate::model::{Fmt, Kind, Spacing, kept_font};
-use super::record::{RecordReader, tags};
+use super::record::{RecordReader, i32_at, tags, u16_at, u32_at, utf16_units};
+use crate::model::{Fmt, Spacing, kept_font};
 
 pub const HWP5_SIGNATURE: &[u8] = b"HWP Document File";
 
@@ -14,6 +14,7 @@ pub struct FileHeader {
     pub version: u32,
     pub is_compressed: bool,
     pub is_encrypted: bool,
+    /// A distribution document: its body is encrypted in `ViewText`, not `BodyText`.
     pub is_distribution: bool,
 }
 
@@ -22,167 +23,141 @@ impl FileHeader {
         if bytes.len() < 256 {
             return Err("HWP 5.x FileHeader stream is shorter than 256 bytes".to_string());
         }
-
         if !bytes.starts_with(HWP5_SIGNATURE) {
             return Err("Invalid HWP 5.x signature (expected 'HWP Document File')".to_string());
         }
-
-        let version = u32::from_le_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]);
-        let flags = u32::from_le_bytes([bytes[36], bytes[37], bytes[38], bytes[39]]);
-
-        let is_compressed = (flags & 0x01) != 0;
-        let is_encrypted = (flags & 0x02) != 0;
-        let is_distribution = (flags & 0x04) != 0;
-
-        Ok(FileHeader {
-            version,
-            is_compressed,
-            is_encrypted,
-            is_distribution,
-        })
+        let version = u32_at(bytes, 32).unwrap_or_default();
+        let flags = u32_at(bytes, 36).unwrap_or_default();
+        Ok(FileHeader { version, is_compressed: flags & 0x01 != 0, is_encrypted: flags & 0x02 != 0, is_distribution: flags & 0x04 != 0 })
     }
 }
 
-/// Information extracted from the `DocInfo` stream.
+/// A paragraph shape: alignment and indents, points.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ParaShape {
+    pub align: Option<Align>,
+    pub spacing: Spacing,
+}
+
+/// A binary item embedded in the file: the `BinData/BIN{id:04X}.{ext}` stream.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BinItem {
+    pub id: u16,
+    pub ext: String,
+    /// Whether its stream is compressed: `None` follows the document.
+    pub compressed: Option<bool>,
+}
+
+/// What the body needs from the `DocInfo` stream, indexed by the ids the body refers to.
 #[derive(Clone, Debug, Default)]
 pub struct DocInfo {
-    pub font_faces: Vec<Arc<str>>,
+    /// Hangul font faces (the first language group); `None` for a name too long to keep.
+    pub fonts: Vec<Option<Arc<str>>>,
     pub char_shapes: Vec<Fmt>,
-    pub para_shapes: Vec<(Option<Align>, Spacing, Kind)>,
+    pub para_shapes: Vec<ParaShape>,
+    /// Binary items in order (pictures refer to them from 1); `None` for a linked file.
+    pub bin_items: Vec<Option<BinItem>>,
 }
 
 impl DocInfo {
     pub fn parse(stream_bytes: &[u8]) -> Self {
         let mut info = DocInfo::default();
-        let mut reader = RecordReader::new(stream_bytes);
-
-        while let Some(record) = reader.next_record() {
-            match record.tag_id {
+        // Face names come in seven language groups (Hangul first); ID_MAPPINGS gives their sizes.
+        let mut hangul_fonts = None;
+        let mut faces = 0usize;
+        for rec in RecordReader::new(stream_bytes) {
+            let d = rec.data;
+            match rec.tag {
+                tags::ID_MAPPINGS => hangul_fonts = u32_at(d, 4).map(|n| n as usize),
+                tags::BIN_DATA => info.bin_items.push(bin_item(d)),
                 tags::FACE_NAME => {
-                    if record.data.len() >= 2 {
-                        // Skip property byte, rest is UTF-16LE string with length prefix
-                        let name_bytes = &record.data[2..];
-                        let u16_chars: Vec<u16> = name_bytes
-                            .chunks_exact(2)
-                            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-                            .take_while(|&c| c != 0)
-                            .collect();
-                        let name_str = String::from_utf16_lossy(&u16_chars);
-                        if let Some(font_arc) = kept_font(&name_str) {
-                            info.font_faces.push(font_arc);
-                        } else {
-                            info.font_faces.push(Arc::from("맑은 고딕"));
-                        }
+                    faces += 1;
+                    if hangul_fonts.is_none_or(|n| faces <= n) {
+                        info.fonts.push(face_name(d));
                     }
                 }
-                tags::CHAR_SHAPE => {
-                    if record.data.len() >= 72 {
-                        let mut fmt = Fmt::default();
-
-                        // Font ID (Hangul font at bytes 0..2)
-                        let hangul_font_id = u16::from_le_bytes([record.data[0], record.data[1]]) as usize;
-                        if let Some(font_name) = info.font_faces.get(hangul_font_id) {
-                            fmt.font = Some(font_name.clone());
-                        }
-
-                        // Base font size (DWORD at bytes 56..60 in HWPU: 1000 = 10pt)
-                        let size_hwpu = u32::from_le_bytes([
-                            record.data[56],
-                            record.data[57],
-                            record.data[58],
-                            record.data[59],
-                        ]);
-                        fmt.size = Some(size_hwpu as f32 / 100.0);
-
-                        // Attributes (DWORD at bytes 60..64)
-                        let attr = u32::from_le_bytes([
-                            record.data[60],
-                            record.data[61],
-                            record.data[62],
-                            record.data[63],
-                        ]);
-                        fmt.bold = (attr & 0x01) != 0;
-                        fmt.italic = (attr & 0x02) != 0;
-                        fmt.underline = ((attr >> 2) & 0x03) != 0;
-                        fmt.strike = ((attr >> 18) & 0x07) != 0;
-
-                        // Text color (COLORREF 0x00BBGGRR at bytes 68..72)
-                        let r = record.data[68];
-                        let g = record.data[69];
-                        let b = record.data[70];
-                        if !(r == 0 && g == 0 && b == 0) {
-                            fmt.color = Some(Rgb(r, g, b));
-                        }
-
-                        info.char_shapes.push(fmt);
-                    }
-                }
-                tags::PARA_SHAPE => {
-                    if record.data.len() >= 24 {
-                        let attr = u32::from_le_bytes([
-                            record.data[0],
-                            record.data[1],
-                            record.data[2],
-                            record.data[3],
-                        ]);
-
-                        let align_val = (attr >> 2) & 0x07;
-                        let align = match align_val {
-                            0 => Some(Align::Justify),
-                            1 => Some(Align::Left),
-                            2 => Some(Align::Right),
-                            3 => Some(Align::Center),
-                            4 => Some(Align::Distribute),
-                            _ => None,
-                        };
-
-                        let left_hwpu = i32::from_le_bytes([
-                            record.data[4],
-                            record.data[5],
-                            record.data[6],
-                            record.data[7],
-                        ]);
-                        let right_hwpu = i32::from_le_bytes([
-                            record.data[8],
-                            record.data[9],
-                            record.data[10],
-                            record.data[11],
-                        ]);
-                        let indent_hwpu = i32::from_le_bytes([
-                            record.data[12],
-                            record.data[13],
-                            record.data[14],
-                            record.data[15],
-                        ]);
-                        let before_hwpu = i32::from_le_bytes([
-                            record.data[16],
-                            record.data[17],
-                            record.data[18],
-                            record.data[19],
-                        ]);
-                        let after_hwpu = i32::from_le_bytes([
-                            record.data[20],
-                            record.data[21],
-                            record.data[22],
-                            record.data[23],
-                        ]);
-
-                        let spacing = Spacing {
-                            left: if left_hwpu != 0 { Some(left_hwpu as f32 / 100.0) } else { None },
-                            right: if right_hwpu != 0 { Some(right_hwpu as f32 / 100.0) } else { None },
-                            first: if indent_hwpu != 0 { Some(indent_hwpu as f32 / 100.0) } else { None },
-                            before: if before_hwpu != 0 { Some(before_hwpu as f32 / 100.0) } else { None },
-                            after: if after_hwpu != 0 { Some(after_hwpu as f32 / 100.0) } else { None },
-                            ..Default::default()
-                        };
-
-                        info.para_shapes.push((align, spacing, Kind::Normal));
-                    }
-                }
+                // Shapes keep their place even when unreadable: the body refers to them by index.
+                tags::CHAR_SHAPE => info.char_shapes.push(char_shape(d, &info.fonts)),
+                tags::PARA_SHAPE => info.para_shapes.push(para_shape(d)),
                 _ => {}
             }
         }
-
         info
     }
+}
+
+/// BIN_DATA: attributes (bits 0-3: 0 link, 1 embedded, 2 storage; bits 4-5: 0 as the document,
+/// 1 compressed, 2 stored), then for an embedded item its id and its extension (length-prefixed
+/// UTF-16).
+fn bin_item(d: &[u8]) -> Option<BinItem> {
+    let attr = u16_at(d, 0)?;
+    if attr & 0x0F != 1 {
+        return None;
+    }
+    let id = u16_at(d, 2)?;
+    let len = usize::from(u16_at(d, 4)?).min(16);
+    let units = utf16_units(d.get(6..6 + len * 2)?);
+    let ext: String = String::from_utf16_lossy(&units).chars().filter(char::is_ascii_alphanumeric).collect();
+    let compressed = match (attr >> 4) & 0x03 {
+        1 => Some(true),
+        2 => Some(false),
+        _ => None,
+    };
+    Some(BinItem { id, ext, compressed })
+}
+
+/// FACE_NAME: a property byte, the name's length in UTF-16 units, then the name.
+fn face_name(d: &[u8]) -> Option<Arc<str>> {
+    let len = usize::from(u16_at(d, 1)?);
+    let bytes = d.get(3..3 + len * 2)?;
+    let units = utf16_units(bytes);
+    let name = String::from_utf16_lossy(&units);
+    let name = name.trim();
+    if name.is_empty() { None } else { kept_font(name) }
+}
+
+/// CHAR_SHAPE: seven font ids (Hangul first), per-language ratios, spacings, relative sizes and
+/// offsets (42 bytes), then the base size (HWPUNIT, 1/100 pt), the attributes and the text colour.
+fn char_shape(d: &[u8], fonts: &[Option<Arc<str>>]) -> Fmt {
+    let mut fmt = Fmt::default();
+    if let Some(id) = u16_at(d, 0) {
+        fmt.font = fonts.get(usize::from(id)).cloned().flatten();
+    }
+    if let Some(size) = i32_at(d, 42).filter(|s| (100..=409_600).contains(s)) {
+        fmt.size = Some(size as f32 / 100.0);
+    }
+    if let Some(attr) = u32_at(d, 46) {
+        fmt.italic = attr & 0x01 != 0;
+        fmt.bold = attr & 0x02 != 0;
+        // Underline kind (bits 2-3): 1 below the text, 3 above it.
+        fmt.underline = (attr >> 2) & 0x03 == 1;
+        fmt.sup = attr & (1 << 15) != 0;
+        fmt.sub = attr & (1 << 16) != 0;
+        fmt.strike = (attr >> 18) & 0x07 != 0;
+    }
+    // COLORREF 0x00BBGGRR; black is the default colour.
+    if let Some(c) = d.get(52..55)
+        && c != [0, 0, 0]
+    {
+        fmt.color = Some(Rgb(c[0], c[1], c[2]));
+    }
+    fmt
+}
+
+/// PARA_SHAPE: attributes (alignment in bits 2-4), then the left and right margins, the first
+/// line indent and the space above and below, in HWPUNIT. The margins and spaces are stored
+/// doubled (HWPX writes the same doubled values in its `hp:default` branch).
+fn para_shape(d: &[u8]) -> ParaShape {
+    let Some(attr) = u32_at(d, 0) else { return ParaShape::default() };
+    let align = match (attr >> 2) & 0x07 {
+        0 => Some(Align::Justify),
+        1 => Some(Align::Left),
+        2 => Some(Align::Right),
+        3 => Some(Align::Center),
+        4 | 5 => Some(Align::Distribute),
+        _ => None,
+    };
+    let pt = |at: usize| i32_at(d, at).filter(|v| *v != 0).map(|v| v as f32 / 200.0);
+    let spacing = Spacing { left: pt(4), right: pt(8), first: pt(12), before: pt(16), after: pt(20), ..Default::default() };
+    ParaShape { align, spacing }
 }
