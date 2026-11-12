@@ -242,6 +242,7 @@ fn format_name(ext: &str) -> String {
         "ott" => "OpenDocument Text Template".into(),
         "fodt" => "Flat OpenDocument Text".into(),
         "tex" => "LaTeX".into(),
+        "hwpx" => "Hangul Document (HWPX)".into(),
         "png" => "PNG Image".into(),
         "json" => "JSON".into(),
         "xml" => "XML".into(),
