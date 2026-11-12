@@ -681,6 +681,21 @@ impl WordApp {
                 }
                 json!({"statusCount": self.ui.status_count.code()})
             }
+            "ui.preset" => {
+                // `word` (the default) or `hwp`: the ribbon tabs and shortcuts in Word's style or
+                // Hancom Hangul's; no value reads it. Choosing one opens its first tab.
+                if let Some(v) = s("value") {
+                    match crate::preset::UiPreset::from_code(v) {
+                        Some(p) => {
+                            self.ui.ui_preset = p;
+                            self.ui.keymap_preset = p.keymap();
+                            self.ui.tab = p.home_tab().into();
+                        }
+                        None => return Some(Err(format!("unknown preset {v:?}; use word or hwp"))),
+                    }
+                }
+                json!({"preset": self.ui.ui_preset.code()})
+            }
             "ui.language" => {
                 // `auto` (follow the system) or a language code; anything else is an error.
                 if let Some(v) = s("value") {
@@ -1123,6 +1138,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.recentClear"
             | "ui.displayServer"
             | "ui.statusCount"
+            | "ui.preset"
             | "ui.checkForUpdates"
     ) || id.starts_with("help.")
 }

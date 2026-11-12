@@ -317,7 +317,6 @@ impl WordApp {
             alt_modifier_seen,
             keymap_preset: _,
             ui_preset: _,
-            ..
         } = ui;
         swap_fields!(w:
             canvas,

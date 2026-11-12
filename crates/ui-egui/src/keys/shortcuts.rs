@@ -125,41 +125,23 @@ pub(super) fn hwp_shortcut(app: &WordApp, key: Key, m: Modifiers) -> Option<(&'s
 
     match key {
         // F7: Page setup (편집 용지 설정)
-        Key::F7 if !m.alt && !m.ctrl && !m.command && !m.shift => {
-            Some(("ui.dialog", json!({"name": "pageSetup"})))
-        }
+        Key::F7 if !m.alt && !m.ctrl && !m.command && !m.shift => Some(("ui.dialog", json!({"name": "pageSetup"}))),
         // Alt+L: Font dialog (글자 모양)
-        Key::L if alt_only => {
-            Some(("ui.dialog", json!({"name": "font"})))
-        }
+        Key::L if alt_only => Some(("ui.dialog", json!({"name": "font"}))),
         // Alt+T: Paragraph dialog (문단 모양)
-        Key::T if alt_only => {
-            Some(("ui.dialog", json!({"name": "paragraph"})))
-        }
+        Key::T if alt_only => Some(("ui.dialog", json!({"name": "paragraph"}))),
         // Alt+S: Save (저장)
-        Key::S if alt_only => {
-            Some(("file.save", json!({})))
-        }
+        Key::S if alt_only => Some(("file.save", json!({}))),
         // Alt+O: Open (불러오기)
-        Key::O if alt_only => {
-            Some(("file.open", json!({})))
-        }
+        Key::O if alt_only => Some(("file.open", json!({}))),
         // Alt+N: New document (새 문서)
-        Key::N if alt_only => {
-            Some(("file.new", json!({})))
-        }
+        Key::N if alt_only => Some(("file.new", json!({}))),
         // Alt+P: Print (인쇄)
-        Key::P if alt_only => {
-            Some(("file.print", json!({})))
-        }
+        Key::P if alt_only => Some(("file.print", json!({}))),
         // Ctrl+F10: Symbol table (문자표)
-        Key::F10 if ctrl_only => {
-            Some(("ui.dialog", json!({"name": "symbol"})))
-        }
+        Key::F10 if ctrl_only => Some(("ui.dialog", json!({"name": "symbol"}))),
         // Alt+C: Copy / Paste formatting (모양 복사)
-        Key::C if alt_only => {
-            Some(("edit.copyFormat", json!({})))
-        }
+        Key::C if alt_only => Some(("edit.copyFormat", json!({}))),
         _ => None,
     }
 }

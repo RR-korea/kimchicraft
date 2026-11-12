@@ -1356,3 +1356,41 @@ fn delete_previous_sentence_shortcut_dispatches_and_can_be_reassigned() {
     assert!(!app.session.sel.is_collapsed());
     assert_eq!(app.session.doc.para_at(&app.session.sel.focus).unwrap().text, "First. Second sentence.");
 }
+
+/// Every command the Hangul-style shortcuts run is one the app knows: a wrong id would do
+/// nothing, silently, as Ctrl+N then F (Insert Footnote) once did.
+#[test]
+fn hangul_shortcuts_name_real_commands() {
+    let (_, mut a) = alt_frame_app();
+    a.run("ui.preset", json!({"value": "hwp"})).unwrap();
+    let alt = Modifiers { alt: true, ..Default::default() };
+    let ctrl = Modifiers { ctrl: true, command: true, ..Default::default() };
+    let mut seen = 0;
+    for (key, m) in
+        [(Key::F7, Modifiers::NONE), (Key::F10, ctrl)].into_iter().chain([Key::L, Key::T, Key::S, Key::O, Key::N, Key::P, Key::C].map(|k| (k, alt)))
+    {
+        let (id, params) = shortcuts::hwp_shortcut(&a, key, m).unwrap_or_else(|| panic!("{key:?} {m:?} has a Hangul shortcut"));
+        assert!(a.session.registry.get(id).is_some() || id == "ui.dialog", "{key:?}: unknown command {id}");
+        if id == "ui.dialog" {
+            assert!(a.run(id, params.clone()).unwrap()["dialog"].is_string(), "{key:?}: no dialog named {params}");
+            a.run("ui.closeDialog", json!({})).unwrap();
+        }
+        seen += 1;
+    }
+    assert_eq!(seen, 9);
+    a.run("ui.preset", json!({"value": "word"})).unwrap();
+    assert!(shortcuts::hwp_shortcut(&a, Key::F7, Modifiers::NONE).is_none(), "Word style keeps Word's keys");
+}
+
+/// Ctrl+N then F inserts a footnote in the Hangul style, and Ctrl+N then T opens Insert Table.
+#[test]
+fn hangul_chords_run_their_commands() {
+    let (ctx, mut a) = alt_frame_app();
+    a.run("ui.preset", json!({"value": "hwp"})).unwrap();
+    let ctrl = Modifiers { ctrl: true, command: true, ..Default::default() };
+    let notes = |a: &WordApp| a.session.doc.parts.values().filter(|p| p.kind == wordcraft_doc::PartKind::Footnote).count();
+    assert_eq!(notes(&a), 0);
+    mods_frame(&ctx, &mut a, ctrl, vec![key_event(Key::N, true, ctrl)]);
+    mods_frame(&ctx, &mut a, Modifiers::NONE, vec![key_event(Key::N, false, Modifiers::NONE), key_event(Key::F, true, Modifiers::NONE)]);
+    assert_eq!(notes(&a), 1, "Ctrl+N, F inserted a footnote");
+}

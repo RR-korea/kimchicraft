@@ -65,7 +65,7 @@ pub fn handle_chord(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers:
                     }
                     // F: Footnote
                     Key::F => {
-                        let _ = app.run("insert.footnote", json!({}));
+                        let _ = app.run("references.footnote", json!({}));
                         return true;
                     }
                     // H: Header
@@ -78,16 +78,14 @@ pub fn handle_chord(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers:
                     _ => return false,
                 }
             }
-            ChordPrefix::CtrlK => {
-                match key {
-                    Key::H => {
-                        let _ = app.run("ui.dialog", json!({"name": "hyperlink"}));
-                        return true;
-                    }
-                    Key::Escape => return true,
-                    _ => return false,
+            ChordPrefix::CtrlK => match key {
+                Key::H => {
+                    let _ = app.run("ui.dialog", json!({"name": "link"}));
+                    return true;
                 }
-            }
+                Key::Escape => return true,
+                _ => return false,
+            },
             ChordPrefix::None => {}
         }
     }
@@ -96,17 +94,11 @@ pub fn handle_chord(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers:
     let is_ctrl = (modifiers.ctrl || modifiers.command) && !modifiers.alt && !modifiers.shift;
     if is_ctrl {
         if key == Key::N {
-            app.canvas.chord = ChordState {
-                prefix: ChordPrefix::CtrlN,
-                started_at: now,
-            };
+            app.canvas.chord = ChordState { prefix: ChordPrefix::CtrlN, started_at: now };
             app.canvas.swallow_text = true;
             return true;
         } else if key == Key::K {
-            app.canvas.chord = ChordState {
-                prefix: ChordPrefix::CtrlK,
-                started_at: now,
-            };
+            app.canvas.chord = ChordState { prefix: ChordPrefix::CtrlK, started_at: now };
             app.canvas.swallow_text = true;
             return true;
         }

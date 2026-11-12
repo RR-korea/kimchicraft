@@ -6222,6 +6222,26 @@ fn interface_theme_resolves_against_the_os_appearance() {
     assert_eq!(a.run("ui.theme", json!({})).unwrap()["theme"], "light");
 }
 
+/// `ui.preset` sets the ribbon tabs and shortcuts to Word's style or Hancom Hangul's together;
+/// a value it doesn't know is refused, and the choice is kept between runs in `ui.json`.
+#[test]
+fn the_hangul_preset_is_a_ui_command() {
+    use crate::preset::{KeymapPreset, UiPreset};
+    let mut a = app();
+    assert_eq!(a.run("ui.preset", json!({})).unwrap(), json!({"preset": "word"}), "Word, the default");
+    assert!(a.run("ui.preset", json!({"value": "emacs"})).is_err(), "junk is refused");
+    assert_eq!(a.run("ui.preset", json!({"value": " HWP "})).unwrap()["preset"], "hwp");
+    assert_eq!((a.ui.ui_preset, a.ui.keymap_preset, a.ui.tab.as_str()), (UiPreset::Hwp, KeymapPreset::Hwp, "Format"));
+    let saved = serde_json::to_vec(&a.prefs()).unwrap();
+    let back = UiState::from_json(&saved).unwrap();
+    assert_eq!((back.ui_preset, back.keymap_preset), (UiPreset::Hwp, KeymapPreset::Hwp), "kept between runs");
+    // A wrong value in this one setting keeps the rest of `ui.json`.
+    let junk = UiState::from_json(br#"{"uiPreset": "emacs", "statusCount": "characters"}"#).unwrap();
+    assert_eq!((junk.ui_preset, junk.status_count), (UiPreset::Word, StatusCount::Characters));
+    a.run("ui.preset", json!({"value": "word"})).unwrap();
+    assert_eq!((a.ui.keymap_preset, a.ui.tab.as_str()), (KeymapPreset::Word, "Home"));
+}
+
 /// #2797: `ui.statusCount` reads and sets what the status bar's live count shows; a value it
 /// doesn't know is refused, and the choice is written to `ui.json` and read back.
 #[test]

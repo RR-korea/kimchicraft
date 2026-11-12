@@ -1,26 +1,7 @@
-//! UI and Keymap presets for WordCraft (Word style vs Hancom HWP style).
+//! UI and keymap presets: Word style or Hancom Hangul (HWP) style. Chosen together in File ›
+//! Options › General (`ui.preset`), kept between runs in `ui.json`.
 
 use serde::{Deserialize, Serialize};
-
-/// High-level application preset: controls both UI and keymap style.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum AppPreset {
-    #[default]
-    Word,
-    Hwp,
-}
-
-impl AppPreset {
-    pub const ALL: [AppPreset; 2] = [AppPreset::Word, AppPreset::Hwp];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            AppPreset::Word => "Microsoft Word 스타일 (기본)",
-            AppPreset::Hwp => "한글(HWP) 스타일",
-        }
-    }
-}
 
 /// Shortcut keymap preset.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,18 +12,7 @@ pub enum KeymapPreset {
     Hwp,
 }
 
-impl KeymapPreset {
-    pub const ALL: [KeymapPreset; 2] = [KeymapPreset::Word, KeymapPreset::Hwp];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            KeymapPreset::Word => "Word 스타일 단축키 (Ctrl+D 글자, Ctrl+P 인쇄...)",
-            KeymapPreset::Hwp => "한글(HWP) 스타일 단축키 (F7 편집용지, Alt+L 글자, Alt+T 문단, Ctrl+N,T 표...)",
-        }
-    }
-}
-
-/// Ribbon & Toolbar menu layout preset.
+/// Ribbon tab layout preset.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UiPreset {
@@ -54,10 +24,39 @@ pub enum UiPreset {
 impl UiPreset {
     pub const ALL: [UiPreset; 2] = [UiPreset::Word, UiPreset::Hwp];
 
+    /// The value used by the `ui.preset` command.
+    pub fn code(self) -> &'static str {
+        match self {
+            UiPreset::Word => "word",
+            UiPreset::Hwp => "hwp",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<UiPreset> {
+        UiPreset::ALL.into_iter().find(|p| p.code().eq_ignore_ascii_case(code.trim()))
+    }
+
+    /// The keymap that goes with this layout.
+    pub fn keymap(self) -> KeymapPreset {
+        match self {
+            UiPreset::Word => KeymapPreset::Word,
+            UiPreset::Hwp => KeymapPreset::Hwp,
+        }
+    }
+
+    /// The ribbon tab the layout opens on.
+    pub fn home_tab(self) -> &'static str {
+        match self {
+            UiPreset::Word => "Home",
+            UiPreset::Hwp => "Format",
+        }
+    }
+
+    /// The English label (translated with `tl!` where shown).
     pub fn label(self) -> &'static str {
         match self {
-            UiPreset::Word => "Word 리본 탭 (홈, 삽입, 레이아웃...)",
-            UiPreset::Hwp => "한글 메뉴 탭 (파일, 편집, 보기, 입력, 서식, 쪽, 검토, 도구)",
+            UiPreset::Word => "Word (Home, Insert, Layout…)",
+            UiPreset::Hwp => "Hangul (File, Edit, View, Insert, Format, Page, Review, Tools)",
         }
     }
 }
