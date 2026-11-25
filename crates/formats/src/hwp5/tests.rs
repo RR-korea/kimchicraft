@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::Arc;
 
-use wordcraft_doc::{Align, Rgb, StoryRef};
+use craft_wordmodel::{Align, Rgb};
+use wordcraft_doc::StoryRef;
 
 use super::header::{DocInfo, FileHeader};
 use super::record::{RecordReader, tags, tree};

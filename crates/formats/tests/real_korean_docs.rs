@@ -12,8 +12,8 @@ use wordcraft_doc::StoryRef;
 fn preview(ext: &str, bytes: &[u8]) -> Option<String> {
     let mut raw = Vec::new();
     if ext == "hwpx" {
-        let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).ok()?;
-        zip.by_name("Preview/PrvText.txt").ok()?.read_to_end(&mut raw).ok()?;
+        let limits = craft_zip::Limits { max_entries: 20_000, max_total_bytes: 1 << 30 };
+        raw = craft_zip::Archive::open(bytes, limits).ok()?.read("Preview/PrvText.txt", 64 << 20).ok()??;
         Some(String::from_utf8_lossy(&raw).into_owned())
     } else {
         let mut comp = cfb::CompoundFile::open(Cursor::new(bytes)).ok()?;

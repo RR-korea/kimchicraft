@@ -1,6 +1,6 @@
 //! Unit and value conversion for HWPX documents.
 
-use wordcraft_doc::{Align, Rgb};
+use craft_wordmodel::{Align, Rgb};
 
 /// 1 pt = 100 HWPUNIT (1 inch = 72 pt = 7200 HWPUNIT).
 pub fn hwpu_to_pt(hwpu: i64) -> f32 {

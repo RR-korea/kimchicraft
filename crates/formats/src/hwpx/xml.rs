@@ -131,7 +131,8 @@ pub fn parse(xml: &[u8]) -> Option<Elem> {
             Ok(Event::Text(t)) => push_text(&mut open, skipped, &t.decode().map(|c| c.into_owned()).unwrap_or_default()),
             Ok(Event::CData(t)) => push_text(&mut open, skipped, &String::from_utf8_lossy(&t)),
             Ok(Event::GeneralRef(g)) => {
-                let s = match g.as_ref() {
+                let name: &[u8] = &g;
+                let s = match name {
                     b"amp" => "&".to_string(),
                     b"lt" => "<".to_string(),
                     b"gt" => ">".to_string(),

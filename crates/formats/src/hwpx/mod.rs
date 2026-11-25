@@ -1,9 +1,6 @@
 //! HWPX (Hancom Office HWPX, KS X 6101) document import and export.
 
-use wordcraft_doc::{Document, SectionProps};
-
 use crate::hwp_doc;
-use crate::model;
 
 pub mod export;
 mod header;
@@ -18,16 +15,14 @@ mod tests;
 pub use export::export;
 pub use package::Package;
 
-/// Import `bytes` of an HWPX package into a [`Document`].
-pub fn import(bytes: &[u8]) -> Result<Document, String> {
-    import_on(bytes, &SectionProps::default())
+/// Import `bytes` of an HWPX package into a [`wordcraft_doc::Document`].
+pub fn import(bytes: &[u8]) -> Result<wordcraft_doc::Document, String> {
+    import_on(bytes, &wordcraft_doc::SectionProps::default())
 }
 
 /// Import `bytes` of an HWPX package onto `page` properties.
-pub fn import_on(bytes: &[u8], page: &SectionProps) -> Result<Document, String> {
-    model::begin_import();
-    let sections = parse(bytes)?;
-    Ok(hwp_doc::to_doc(sections, page))
+pub fn import_on(bytes: &[u8], page: &wordcraft_doc::SectionProps) -> Result<wordcraft_doc::Document, String> {
+    hwp_doc::import_on(bytes, page, parse)
 }
 
 /// The sections of an HWPX package.

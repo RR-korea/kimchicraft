@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use wordcraft_doc::{Align, Rgb};
+use craft_wordmodel::{Align, Rgb};
 
 use super::styles::{hwpu_to_pt, parse_align, parse_color};
 use super::xml::{self, Elem};

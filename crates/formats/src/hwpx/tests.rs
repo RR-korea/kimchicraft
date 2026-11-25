@@ -1,8 +1,7 @@
-use std::io::{Cursor, Read, Write};
+use std::io::Cursor;
 
-use wordcraft_doc::{Align, Rgb, StoryRef};
-use zip::ZipWriter;
-use zip::write::SimpleFileOptions;
+use craft_wordmodel::{Align, Rgb};
+use wordcraft_doc::StoryRef;
 
 use super::header::HeaderData;
 use super::styles::{hwpu_to_pt, parse_color};
@@ -58,39 +57,30 @@ fn png() -> Vec<u8> {
 /// A package with `HEAD`, the given sections (listed in the manifest's spine in that order) and
 /// a picture whose manifest path is not the `BinData/<id>.<ext>` guess.
 fn package(sections: &[(&str, &str)], spine: bool) -> Vec<u8> {
-    let mut buf = Vec::new();
-    {
-        let mut zip = ZipWriter::new(Cursor::new(&mut buf));
-        let o = SimpleFileOptions::default();
-        zip.start_file("mimetype", o).expect("zip");
-        zip.write_all(b"application/hwp+zip").expect("zip");
-        let mut items = String::from(
-            r#"<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/><opf:item id="image1" href="BinData/picture.PNG" media-type="image/png"/>"#,
-        );
-        let mut refs = String::from(r#"<opf:itemref idref="header"/>"#);
-        for (i, (path, _)) in sections.iter().enumerate() {
-            items.push_str(&format!(r#"<opf:item id="s{i}" href="{path}" media-type="application/xml"/>"#));
-            refs.push_str(&format!(r#"<opf:itemref idref="s{i}"/>"#));
-        }
-        if !spine {
-            refs.clear();
-        }
-        zip.start_file("Contents/content.hpf", o).expect("zip");
-        let hpf = format!(
-            r#"<opf:package xmlns:opf="http://www.idpf.org/2007/opf/"><opf:manifest>{items}</opf:manifest><opf:spine>{refs}</opf:spine></opf:package>"#
-        );
-        zip.write_all(hpf.as_bytes()).expect("zip");
-        zip.start_file("Contents/header.xml", o).expect("zip");
-        zip.write_all(HEAD.as_bytes()).expect("zip");
-        for (path, xml) in sections {
-            zip.start_file(*path, o).expect("zip");
-            zip.write_all(xml.as_bytes()).expect("zip");
-        }
-        zip.start_file("BinData/picture.PNG", o).expect("zip");
-        zip.write_all(&png()).expect("zip");
-        zip.finish().expect("zip");
+    let mut zip = craft_zip::Writer::new();
+    let o = craft_zip::Compression::Deflated;
+    zip.add("mimetype", b"application/hwp+zip", o).expect("zip");
+    let mut items = String::from(
+        r#"<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/><opf:item id="image1" href="BinData/picture.PNG" media-type="image/png"/>"#,
+    );
+    let mut refs = String::from(r#"<opf:itemref idref="header"/>"#);
+    for (i, (path, _)) in sections.iter().enumerate() {
+        items.push_str(&format!(r#"<opf:item id="s{i}" href="{path}" media-type="application/xml"/>"#));
+        refs.push_str(&format!(r#"<opf:itemref idref="s{i}"/>"#));
     }
-    buf
+    if !spine {
+        refs.clear();
+    }
+    let hpf = format!(
+        r#"<opf:package xmlns:opf="http://www.idpf.org/2007/opf/"><opf:manifest>{items}</opf:manifest><opf:spine>{refs}</opf:spine></opf:package>"#
+    );
+    zip.add("Contents/content.hpf", hpf.as_bytes(), o).expect("zip");
+    zip.add("Contents/header.xml", HEAD.as_bytes(), o).expect("zip");
+    for (path, xml) in sections {
+        zip.add(path, xml.as_bytes(), o).expect("zip");
+    }
+    zip.add("BinData/picture.PNG", &png(), o).expect("zip");
+    zip.finish().expect("zip")
 }
 
 fn one_para(text: &str) -> String {
@@ -198,17 +188,10 @@ fn import_builds_sections_headers_and_text() {
 fn export_writes_a_hangul_package() {
     let doc = import(&package(&[("Contents/section0.xml", SECTION)], true)).expect("import");
     let bytes = export(&doc).expect("export");
-    let mut zip = zip::ZipArchive::new(Cursor::new(&bytes[..])).expect("zip");
-    {
-        let first = zip.by_index(0).expect("first entry");
-        assert_eq!(first.name(), "mimetype");
-        assert_eq!(first.compression(), zip::CompressionMethod::Stored);
-    }
-    let read = |zip: &mut zip::ZipArchive<Cursor<&[u8]>>, n: &str| {
-        let mut s = String::new();
-        zip.by_name(n).expect(n).read_to_string(&mut s).expect("utf-8");
-        s
-    };
+    let mut zip = craft_zip::Archive::open(&bytes, craft_zip::Limits { max_entries: 10_000, max_total_bytes: 64 << 20 }).expect("zip");
+    assert_eq!(zip.entry_name(0).expect("first entry").as_deref(), Some("mimetype"));
+    assert_eq!(zip.is_stored("mimetype"), Some(true));
+    let read = |zip: &mut craft_zip::Archive<'_>, n: &str| String::from_utf8(zip.read(n, 1 << 20).expect(n).expect(n)).expect("utf-8");
     let header = read(&mut zip, "Contents/header.xml");
     assert_eq!(header.matches("<hh:fontface ").count(), 7);
     assert!(header.contains("<hh:bold/>") && header.contains(r#"<hh:align horizontal="CENTER""#));
@@ -220,7 +203,7 @@ fn export_writes_a_hangul_package() {
     assert!(section.contains("<hp:cellAddr ") && section.contains("<hp:footNote ") && section.contains("<hp:header "));
     let hpf = read(&mut zip, "Contents/content.hpf");
     assert!(hpf.contains(r#"href="Contents/section0.xml""#) && hpf.contains(r#"<opf:itemref idref="section0""#));
-    assert!(zip.file_names().any(|n| n.starts_with("BinData/image1.")));
+    assert!(zip.names().any(|n| n.starts_with("BinData/image1.")));
 }
 
 #[test]

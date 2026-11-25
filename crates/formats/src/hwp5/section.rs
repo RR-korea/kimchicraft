@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use wordcraft_doc::SectionProps;
+use craft_wordmodel::SectionProps;
 
 use super::header::DocInfo;
 use super::record::{Node, i32_at, tags, tree, u16_at, u32_at, utf16_units};

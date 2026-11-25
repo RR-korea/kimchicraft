@@ -1,12 +1,24 @@
 //! What the HWP 5.x and HWPX readers share: their sections (page, header, footer and blocks)
-//! into a [`Document`].
+//! into a [`Document`] of the shared model, and from there into the app's.
 
 use std::sync::Arc;
 
-use wordcraft_doc::section::HeaderSet;
-use wordcraft_doc::{Block, Document, PartKind, SectionProps};
+use craft_wordmodel::section::HeaderSet;
+use craft_wordmodel::{Block, Document, PartKind, SectionProps};
 
 use crate::model::{self, Cell, FBlock, FTable, Flow, Para};
+
+/// Read `bytes` with `parse` onto the app's `page` and bring the result into the app's model.
+pub(crate) fn import_on(
+    bytes: &[u8],
+    page: &wordcraft_doc::SectionProps,
+    parse: fn(&[u8]) -> Result<Vec<Section>, String>,
+) -> Result<wordcraft_doc::Document, String> {
+    model::begin_import();
+    let sections = parse(bytes)?;
+    let doc = to_doc(sections, &crate::odt::shared_section(page));
+    wordcraft_docx::from_shared_model(doc).map_err(|e| e.to_string())
+}
 
 /// Add `table` to `out`. Hangul anchors each table in a paragraph of its own; the document model
 /// joins tables that touch into one, so a table right after another gets an empty paragraph

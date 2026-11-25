@@ -2,16 +2,16 @@
 //! its binary items (pictures).
 
 use std::collections::HashMap;
-use std::io::{Cursor, Read};
-
-use zip::ZipArchive;
 
 use super::xml;
 use crate::MAX_ZIP_ENTRIES;
 use crate::hwp_doc::{MAX_PART, MAX_SECTIONS};
 
+/// Most bytes all the parts of one package may expand to together.
+const MAX_PACKAGE: u64 = 1 << 30;
+
 pub struct Package<'a> {
-    zip: ZipArchive<Cursor<&'a [u8]>>,
+    zip: craft_zip::Archive<'a>,
     section_paths: Vec<String>,
     header_path: Option<String>,
     /// Manifest item id → path in the zip.
@@ -20,10 +20,10 @@ pub struct Package<'a> {
 
 impl<'a> Package<'a> {
     pub fn open(bytes: &'a [u8]) -> Result<Self, String> {
-        let zip = ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("HWPX zip error: {e}"))?;
-        if zip.len() as u64 > MAX_ZIP_ENTRIES {
-            return Err("HWPX package exceeds maximum zip entries".to_string());
-        }
+        // The entry-count guard runs before the directory is read; the total bounds what all the
+        // parts together may expand to.
+        let limits = craft_zip::Limits { max_entries: MAX_ZIP_ENTRIES, max_total_bytes: MAX_PACKAGE };
+        let zip = craft_zip::Archive::open(bytes, limits).map_err(|e| format!("HWPX zip error: {e}"))?;
         let mut package = Package { zip, section_paths: Vec::new(), header_path: None, items: HashMap::new() };
 
         // The manifest lists every part; its spine gives the sections in reading order.
@@ -51,7 +51,7 @@ impl<'a> Package<'a> {
         if package.section_paths.is_empty() {
             let mut found: Vec<(u32, String)> = package
                 .zip
-                .file_names()
+                .names()
                 .filter(|n| is_section(n))
                 .filter_map(|n| {
                     let num = n.strip_prefix("Contents/section")?.strip_suffix(".xml")?.parse().ok()?;
@@ -61,7 +61,7 @@ impl<'a> Package<'a> {
             found.sort();
             package.section_paths = found.into_iter().take(MAX_SECTIONS).map(|(_, n)| n).collect();
         }
-        if package.header_path.is_none() && package.zip.file_names().any(|n| n == "Contents/header.xml") {
+        if package.header_path.is_none() && package.zip.contains("Contents/header.xml") {
             package.header_path = Some("Contents/header.xml".to_string());
         }
         Ok(package)
@@ -76,12 +76,9 @@ impl<'a> Package<'a> {
         &self.section_paths
     }
 
-    /// The bytes of `path`, up to [`MAX_PART`] (a hostile size field does not set the allocation).
+    /// The bytes of `path`; `None` for a part that is missing, broken or bigger than [`MAX_PART`].
     pub fn read_entry(&mut self, path: &str) -> Option<Vec<u8>> {
-        let file = self.zip.by_name(path).ok()?;
-        let mut bytes = Vec::new();
-        file.take(MAX_PART as u64).read_to_end(&mut bytes).ok()?;
-        Some(bytes)
+        self.zip.read(path, MAX_PART as u64).ok().flatten()
     }
 
     /// The bytes of the binary item `id` (a picture), from the manifest or the usual `BinData/` path.
@@ -92,7 +89,7 @@ impl<'a> Package<'a> {
             return Some(bytes);
         }
         let prefix = format!("BinData/{id}.");
-        let path = self.zip.file_names().find(|n| n.starts_with(&prefix))?.to_string();
+        let path = self.zip.names().find(|n| n.starts_with(&prefix))?.into_owned();
         self.read_entry(&path)
     }
 }

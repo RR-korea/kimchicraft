@@ -4,14 +4,11 @@
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
-use std::io::{Cursor, Write};
 use std::sync::Arc;
 
-use wordcraft_doc::props::VAlign;
-use wordcraft_doc::section::HeaderSet;
-use wordcraft_doc::{Document, Rgb, SectionProps};
-use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, ZipWriter};
+use craft_wordmodel::props::VAlign;
+use craft_wordmodel::section::HeaderSet;
+use craft_wordmodel::{Document, Rgb, SectionProps};
 
 use super::styles::{align_name, color_hex, pt_to_hwpu};
 use crate::model::{self, Cell, FBlock, FTable, FlowOpts, Fmt, Img, Inline, Para, equations_as_text, mime_of};
@@ -32,8 +29,13 @@ const DEFAULT_FONT: &str = "함초롬바탕";
 const FILL_NONE: u32 = 2;
 const FILL_GRID: u32 = 3;
 
-/// Export a [`Document`] as an HWPX package (ZIP bytes).
-pub fn export(doc: &Document) -> Result<Vec<u8>, String> {
+/// Export the app's document as an HWPX package (ZIP bytes).
+pub fn export(doc: &wordcraft_doc::Document) -> Result<Vec<u8>, String> {
+    export_shared(&wordcraft_docx::to_shared_model(doc).map_err(|e| e.to_string())?)
+}
+
+/// Export a [`Document`] of the shared model as an HWPX package.
+fn export_shared(doc: &Document) -> Result<Vec<u8>, String> {
     let opts = FlowOpts { notes: true, ..Default::default() };
     let flow = model::from_doc_with(doc, opts);
     let band = |set: &HeaderSet| set.default.and_then(|id| doc.parts.get(&id)).map(|p| model::part_flow(doc, &p.blocks, opts));
@@ -61,28 +63,26 @@ pub fn export(doc: &Document) -> Result<Vec<u8>, String> {
     package(&w, title, &header_xml, &section_xml).map_err(|e| format!("HWPX zip error: {e}"))
 }
 
-fn package(w: &Writer, title: &str, header: &str, sections: &[String]) -> zip::result::ZipResult<Vec<u8>> {
-    let mut buf = Vec::new();
-    let mut zip = ZipWriter::new(Cursor::new(&mut buf));
-    let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
-    let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+fn package(w: &Writer, title: &str, header: &str, sections: &[String]) -> Result<Vec<u8>, craft_zip::Error> {
+    let mut zip = craft_zip::Writer::new();
+    let stored = craft_zip::Compression::Stored;
+    let deflated = craft_zip::Compression::Deflated;
 
     // The mimetype comes first, stored, so the package can be recognised by its first bytes.
-    zip.start_file("mimetype", stored)?;
-    zip.write_all(b"application/hwp+zip")?;
-    zip.start_file("version.xml", stored)?;
-    zip.write_all(
+    zip.add("mimetype", b"application/hwp+zip", stored)?;
+    zip.add("version.xml",
         format!(
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><hv:HCFVersion xmlns:hv="http://www.hancom.co.kr/hwpml/2011/version" tagetApplication="WORDPROCESSOR" major="5" minor="1" micro="0" buildNumber="0" os="1" xmlVersion="1.4" application="WordCraft" appVersion="{}"/>"#,
             env!("CARGO_PKG_VERSION")
         )
         .as_bytes(),
+        stored,
     )?;
-    zip.start_file("META-INF/container.xml", deflated)?;
-    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf"><ocf:rootfiles><ocf:rootfile full-path="Contents/content.hpf" media-type="application/hwpml-package+xml"/></ocf:rootfiles></ocf:container>"#)?;
-    zip.start_file("META-INF/manifest.xml", deflated)?;
-    zip.write_all(
+    zip.add("META-INF/container.xml", br#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:hpf="http://www.hancom.co.kr/schema/2011/hpf"><ocf:rootfiles><ocf:rootfile full-path="Contents/content.hpf" media-type="application/hwpml-package+xml"/></ocf:rootfiles></ocf:container>"#, deflated)?;
+    zip.add(
+        "META-INF/manifest.xml",
         br#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"/>"#,
+        deflated,
     )?;
 
     let mut items = String::from(r#"<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>"#);
@@ -95,28 +95,23 @@ fn package(w: &Writer, title: &str, header: &str, sections: &[String]) -> zip::r
         let _ = write!(spine, r#"<opf:itemref idref="section{i}" linear="yes"/>"#);
     }
     items.push_str(r#"<opf:item id="settings" href="settings.xml" media-type="application/xml"/>"#);
-    zip.start_file("Contents/content.hpf", deflated)?;
-    zip.write_all(
+    zip.add("Contents/content.hpf",
         format!(
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/" xmlns:dc="http://purl.org/dc/elements/1.1/" version="" unique-identifier="" id=""><opf:metadata><opf:title>{}</opf:title><opf:language>ko</opf:language></opf:metadata><opf:manifest>{items}</opf:manifest><opf:spine>{spine}</opf:spine></opf:package>"#,
             esc(title)
         )
         .as_bytes(),
+        deflated,
     )?;
-    zip.start_file("Contents/header.xml", deflated)?;
-    zip.write_all(header.as_bytes())?;
+    zip.add("Contents/header.xml", header.as_bytes(), deflated)?;
     for (i, s) in sections.iter().enumerate() {
-        zip.start_file(format!("Contents/section{i}.xml"), deflated)?;
-        zip.write_all(s.as_bytes())?;
+        zip.add(&format!("Contents/section{i}.xml"), s.as_bytes(), deflated)?;
     }
-    zip.start_file("settings.xml", deflated)?;
-    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><ha:HWPApplicationSetting xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app" xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0"><ha:CaretPosition listIDRef="0" paraIDRef="0" pos="0"/></ha:HWPApplicationSetting>"#)?;
+    zip.add("settings.xml", br#"<?xml version="1.0" encoding="UTF-8" standalone="yes" ?><ha:HWPApplicationSetting xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app" xmlns:config="urn:oasis:names:tc:opendocument:xmlns:config:1.0"><ha:CaretPosition listIDRef="0" paraIDRef="0" pos="0"/></ha:HWPApplicationSetting>"#, deflated)?;
     for (_, path, _, data) in &w.images {
-        zip.start_file(path.as_str(), stored)?;
-        zip.write_all(data)?;
+        zip.add(path.as_str(), data, stored)?;
     }
-    zip.finish()?;
-    Ok(buf)
+    zip.finish()
 }
 
 /// Character properties as written (`hh:charPr`).

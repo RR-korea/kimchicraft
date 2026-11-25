@@ -1,7 +1,7 @@
 //! FileHeader and DocInfo stream parsing for HWP 5.x files.
 
+use craft_wordmodel::{Align, Rgb};
 use std::sync::Arc;
-use wordcraft_doc::{Align, Rgb};
 
 use super::record::{RecordReader, i32_at, tags, u16_at, u32_at, utf16_units};
 use crate::model::{Fmt, Spacing, kept_font};

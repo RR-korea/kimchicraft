@@ -5,10 +5,8 @@ use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use cfb::CompoundFile;
-use wordcraft_doc::{Document, SectionProps};
 
 use crate::hwp_doc::{self, MAX_PART, MAX_SECTIONS};
-use crate::model;
 
 mod header;
 pub mod record;
@@ -23,16 +21,14 @@ pub use section::SectionParser;
 /// Most bytes of embedded pictures read (hostile files); later pictures are left out.
 const MAX_PICTURES: usize = 512 << 20;
 
-/// Import `bytes` of an HWP 5.x binary file into a [`Document`].
-pub fn import(bytes: &[u8]) -> Result<Document, String> {
-    import_on(bytes, &SectionProps::default())
+/// Import `bytes` of an HWP 5.x binary file into a [`wordcraft_doc::Document`].
+pub fn import(bytes: &[u8]) -> Result<wordcraft_doc::Document, String> {
+    import_on(bytes, &wordcraft_doc::SectionProps::default())
 }
 
 /// Import `bytes` of an HWP 5.x binary file onto `page` properties.
-pub fn import_on(bytes: &[u8], page: &SectionProps) -> Result<Document, String> {
-    model::begin_import();
-    let sections = parse(bytes)?;
-    Ok(hwp_doc::to_doc(sections, page))
+pub fn import_on(bytes: &[u8], page: &wordcraft_doc::SectionProps) -> Result<wordcraft_doc::Document, String> {
+    hwp_doc::import_on(bytes, page, parse)
 }
 
 /// The sections of an HWP 5.x file.

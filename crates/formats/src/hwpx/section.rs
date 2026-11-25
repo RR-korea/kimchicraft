@@ -1,8 +1,8 @@
 //! Section parser for HWPX documents (`Contents/section*.xml`): paragraphs and their runs, with
 //! the section's page, tables, pictures, notes, headers, footers and text boxes.
 
-use wordcraft_doc::SectionProps;
-use wordcraft_doc::props::VAlign;
+use craft_wordmodel::SectionProps;
+use craft_wordmodel::props::VAlign;
 
 use super::header::HeaderData;
 use super::package::Package;
