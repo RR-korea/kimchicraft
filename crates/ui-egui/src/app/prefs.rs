@@ -2,7 +2,7 @@ use craft::settings::{LoadReport, SaveStatus, SharedSettings};
 use craft::ui::notices::{SaveResult, SettingsLoad};
 use craft::ui::shell::ScreenMode;
 
-use super::{DEFAULT_TAB, MAX_DICTIONARY, WordApp, recent_fonts_from, theme};
+use super::{MAX_DICTIONARY, WordApp, recent_fonts_from, theme};
 use crate::prefs::{Prefs, Shortcuts};
 
 impl WordApp {
@@ -32,7 +32,8 @@ impl WordApp {
         self.ui.backstage = false;
         // Word opens on Home every launch, so the tab the settings hold is not restored. Going File
         // and back to the editor within the run still returns to the tab that was showing.
-        self.ui.tab = DEFAULT_TAB.into();
+        // The HWP style has no Home tab: it opens on its own first tab.
+        self.ui.tab = self.ui.ui_preset.home_tab().into();
         let recent_fonts = recent_fonts_from(self.ui.font_picker.recent.iter().map(String::as_str));
         self.ui.font_picker.recent = recent_fonts;
         // Settings from before the theme setting: their dark-mode switch picks Dark or Light.

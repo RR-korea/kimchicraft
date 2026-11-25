@@ -159,7 +159,7 @@ pub struct Prefs {
     /// Options › Display. Junk saved values read as words.
     pub status_count: StatusCount,
     /// The interface style (`ui.preset`): the default ribbon and shortcuts, or the HWP style's
-    /// menu tabs and keys. Junk saved values read as the default.
+    /// menu tabs and keys. Missing or junk saved values read as the HWP style.
     pub ui_preset: crate::preset::UiPreset,
     /// File › Options › General: tell about a document's missing fonts that can be downloaded
     /// ([`crate::font_download`]); the box's "Don't show this again" turns it off.
@@ -228,7 +228,8 @@ impl Default for Prefs {
             dictionary: Vec::new(),
             display_server: DisplayServer::Auto,
             status_count: StatusCount::default(),
-            ui_preset: crate::preset::UiPreset::default(),
+            // KimchiCraft opens in the HWP style until the user picks the default ribbon.
+            ui_preset: crate::preset::UiPreset::Hwp,
             font_download_notice: true,
             scroll_speed: ScrollSpeed::default(),
             touchpad_scroll_speed: ScrollSpeed::default(),

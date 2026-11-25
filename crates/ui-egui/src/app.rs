@@ -1,9 +1,9 @@
 use super::services::Services;
 use super::state::{AutoSaveBlock, PromptSave, keeps_everything};
 use super::{
-    DEFAULT_TAB, MAX_DICTIONARY, MAX_RECENT, SaveInFlight, Session, Status, Value, WordApp, applied_font, canvas, chrome, crop, dialogs, documents,
-    file_dialogs, i18n, json, panes, paste_picture, printing, push_recent_font, read_aloud, recent_fonts_from, ribbon, system_clipboard, table_pen,
-    theme, updates_ui, window_ui, windows, zotero,
+    MAX_DICTIONARY, MAX_RECENT, SaveInFlight, Session, Status, Value, WordApp, applied_font, canvas, chrome, crop, dialogs, documents, file_dialogs,
+    i18n, json, panes, paste_picture, printing, push_recent_font, read_aloud, recent_fonts_from, ribbon, system_clipboard, table_pen, theme,
+    updates_ui, window_ui, windows, zotero,
 };
 use craft::platform::clock::monotonic_ms;
 use craft::theme::ComponentSet;
@@ -92,7 +92,16 @@ impl WordApp {
         } = window_ui::WindowUi::new(session.document_id());
         WordApp {
             session,
-            ui: super::prefs::Prefs { tab, backstage, backstage_page, nav_collapsed, ..super::prefs::Prefs::default() },
+            // Without saved settings (tests, scripts) the app keeps the default ribbon it opens on;
+            // the saved settings' default, the HWP style, arrives through `apply_prefs`.
+            ui: super::prefs::Prefs {
+                tab,
+                backstage,
+                backstage_page,
+                nav_collapsed,
+                ui_preset: crate::preset::UiPreset::Default,
+                ..super::prefs::Prefs::default()
+            },
             services,
             host: std::sync::Arc::new(craft::host::Host::builder(super::APP).i18n(i18n::catalogs()).lang(craft::i18n::Lang::EN).build()),
             settings: None,

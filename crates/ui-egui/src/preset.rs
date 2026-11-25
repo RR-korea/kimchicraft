@@ -76,10 +76,17 @@ mod tests {
 
     /// `ui.preset` reads and sets the style, refuses a value it doesn't know and opens the style's
     /// first tab; the choice is saved, and a `ui.json` of an earlier build (`word`, `hwp`) or junk reads.
+    /// Settings that never chose a style open in the HWP style, on its first tab.
     #[test]
     fn the_interface_style_is_a_ui_command_kept_between_runs() {
         let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
         assert_eq!(a.run("ui.preset", json!({})).unwrap(), json!({"preset": "default"}));
+        let mut fresh = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        fresh.apply_prefs(serde_json::from_str("{}").unwrap());
+        assert_eq!((fresh.ui.ui_preset, fresh.ui.tab.as_str()), (UiPreset::Hwp, crate::ribbon::hwp::HOME_TAB));
+        let mut chose_default = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        chose_default.apply_prefs(serde_json::from_str(r#"{"uiPreset": "default"}"#).unwrap());
+        assert_eq!((chose_default.ui.ui_preset, chose_default.ui.tab.as_str()), (UiPreset::Default, crate::DEFAULT_TAB));
         assert!(a.run("ui.preset", json!({"value": "emacs"})).is_err());
         assert_eq!(a.run("ui.preset", json!({"value": " HWP "})).unwrap()["preset"], "hwp");
         assert_eq!(a.ui.tab, crate::ribbon::hwp::HOME_TAB);
@@ -88,6 +95,6 @@ mod tests {
         let read = |text: &str| legacy_ui_json(format!(r#"{{"uiPreset": {text}}}"#).as_bytes()).unwrap().0.ui_preset;
         assert_eq!(read(r#""hwp""#), UiPreset::Hwp);
         assert_eq!(read(r#""word""#), UiPreset::Default);
-        assert_eq!(read(r#""emacs""#), UiPreset::Default);
+        assert_eq!(read(r#""emacs""#), UiPreset::Hwp);
     }
 }
