@@ -233,6 +233,7 @@ impl eframe::App for WebShell {
                 }
             });
         }
+        wordcraft_ui_egui::hwp_keys::before_input(&mut self.app, ctx, raw);
         embed::before_input(ctx, |out| self.app.frame_input(out));
     }
 

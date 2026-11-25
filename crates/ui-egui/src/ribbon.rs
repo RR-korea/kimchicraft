@@ -21,6 +21,7 @@ mod design;
 mod draw;
 mod galleries;
 mod home;
+pub(crate) mod hwp;
 mod insert;
 mod language;
 mod layout;
@@ -112,9 +113,15 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) -> RibbonOutput<String> {
     // The tabs shown: File, the user's tabs in their order (Customize Ribbon, #379), then the
     // contextual ones (the Outlining tab right after File). A contextual tab (Table, Picture
     // Format) may be stored while the selection moved away, and a tab may have been hidden.
-    let user_tabs = app.session.ribbon.tabs().into_owned();
+    // The HWP style shows its own menu tabs in place of the user's.
+    let hwp = app.ui.ui_preset == crate::preset::UiPreset::Hwp;
+    let user_tabs = if hwp { Vec::new() } else { app.session.ribbon.tabs().into_owned() };
     let mut names: Vec<(String, bool)> = vec![("File".to_string(), false)];
-    names.extend(user_tabs.iter().filter(|e| !e.hidden).map(|e| (e.name.clone(), e.custom)));
+    if hwp {
+        names.extend(hwp::TABS.iter().map(|t| (t.to_string(), false)));
+    } else {
+        names.extend(user_tabs.iter().filter(|e| !e.hidden).map(|e| (e.name.clone(), e.custom)));
+    }
     for ct in contextual_tabs(&app.session) {
         if ct == "Outlining" {
             names.insert(1.min(names.len()), (ct.to_string(), false));
@@ -213,6 +220,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) -> RibbonOutput<String> {
 // `Ui` accessor, so an `(app, ui)` call cannot be made from the row. `mod galleries;` is ribbon-w12's file and
 // `widgets/font_box.rs` is ribbon-w11's.
 fn tab_body(row: &mut RibbonRow<'_>, app: &mut WordApp, tab: &str) {
+    if app.ui.ui_preset == crate::preset::UiPreset::Hwp && hwp::tab_body(row, app, tab) {
+        return;
+    }
     match tab {
         "Home" => home(row, app),
         "Insert" => insert(row, app),

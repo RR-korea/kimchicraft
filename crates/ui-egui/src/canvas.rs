@@ -176,6 +176,8 @@ pub struct CanvasState {
     pub last_highlight: String,
     pub last_font_color: String,
     pub last_shading: String,
+    /// The first key of an HWP-style two-step key (Ctrl+N of Ctrl+N then T) while the second is awaited.
+    pub(crate) key_sequence: Option<crate::hwp_keys::Stroke>,
     pub open_url: Option<String>,
     /// The page being looked at (0-based), for the status bar (#3880): the caret's page while the
     /// caret is on screen, else the page at the top of the window. None until the canvas is drawn.
@@ -419,6 +421,7 @@ impl Default for CanvasState {
             last_highlight: "yellow".into(),
             last_font_color: "C00000".into(),
             last_shading: "FFF2CC".into(),
+            key_sequence: None,
             open_url: None,
             viewed_page: None,
             ime_preedit: String::new(),

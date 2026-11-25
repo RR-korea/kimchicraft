@@ -108,6 +108,7 @@ impl eframe::App for App {
         if !files.is_empty() {
             self.drops.dropped(files, DropTarget::Elsewhere);
         }
+        wordcraft_ui_egui::hwp_keys::before_input(&mut self.app, ctx, raw);
         embed::before_input(ctx, |out| self.app.frame_input(out));
     }
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {

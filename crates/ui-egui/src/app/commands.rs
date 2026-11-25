@@ -716,6 +716,22 @@ impl WordApp {
                 }
                 json!({"statusCount": self.ui.status_count.code()})
             }
+            "ui.preset" => {
+                // `default` or `hwp`: the ribbon tabs and shortcuts, the default ones or the HWP
+                // style's (its menu tabs, and keys such as Alt+L and Ctrl+N then T); no value
+                // reads it. Choosing one opens its first tab.
+                if let Some(v) = s("value") {
+                    match crate::preset::UiPreset::from_code(v) {
+                        Some(p) => {
+                            self.ui.ui_preset = p;
+                            self.ui.tab = p.home_tab().into();
+                            self.canvas.key_sequence = None;
+                        }
+                        None => return Some(Err(format!("unknown interface style {v:?}; use default or hwp"))),
+                    }
+                }
+                json!({"preset": self.ui.ui_preset.code()})
+            }
             "ui.scrollSpeed" => {
                 // `slow`, `normal` (the default) or `fast`: mouse-wheel scroll speed (#6146);
                 // no value reads it.
@@ -1256,6 +1272,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.recentClear"
             | "ui.displayServer"
             | "ui.statusCount"
+            | "ui.preset"
             | "ui.scrollSpeed"
             | "ui.touchpadScrollSpeed"
             | "ui.checkForUpdates"

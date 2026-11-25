@@ -241,6 +241,7 @@ impl<'a> OptionsModel<'a> {
         match page {
             "general" => vec![
                 ("general.theme", Choice(ui.theme.code().to_string())),
+                ("general.preset", Choice(crate::preset::UiPreset::default().code().to_string())),
                 ("general.interfaceSize", Choice(size)),
                 ("general.paperColor", Choice(id_of(&prefs.paper_color))),
                 ("general.miniToolbar", Bool(ui.mini_toolbar)),
@@ -329,6 +330,15 @@ impl PreferencesModel for OptionsModel<'_> {
                             tl!("Interface theme:"),
                             RowKind::choice(app.ui.theme.code(), entries(Appearance::ALL.iter().map(|a| (a.code(), tl!(a.label()))))),
                         ),
+                        RowSpec::new(
+                            "general.preset",
+                            tl!("Ribbon and shortcuts:"),
+                            RowKind::choice(
+                                app.ui.ui_preset.code(),
+                                entries(crate::preset::UiPreset::ALL.iter().map(|p| (p.code(), tl!(p.label())))),
+                            ),
+                        )
+                        .help(tl!("The HWP style shows the Hangul word processor's menu tabs and uses its keys, such as Alt+L for Character Shape and Ctrl+N then T for a table.")),
                         RowSpec::new("general.interfaceSize", tl!("Interface size:"), RowKind::choice(&s.size_id, owned(&s.sizes))).help(tl!(
                             "Makes the ribbon, menus and dialogs larger or smaller. Auto follows your system's display scaling; 100% is one screen pixel per point. Document zoom is separate."
                         )),
@@ -631,6 +641,7 @@ impl PreferencesModel for OptionsModel<'_> {
         use PrefValue::{Bool, Choice, Float, Int, Text};
         match (key, value) {
             ("general.theme", Choice(c)) => self.run("ui.theme", json!({"value": c})),
+            ("general.preset", Choice(c)) => self.run("ui.preset", json!({"value": c})),
             ("general.interfaceSize", Choice(c)) => match c.parse::<u16>() {
                 Ok(percent) => self.run("ui.interfaceSize", json!({"percent": percent})),
                 Err(_) => self.run("ui.interfaceSize", json!({"value": "auto"})),

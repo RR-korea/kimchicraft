@@ -51,12 +51,32 @@
   ```
 - **아직 확인 못 한 것:** 내보낸 HWPX를 실제 한컴오피스에서 여는 시험, 줄 간격(HWP 백분율 → Word 배수) 매핑.
 
-### 4. "HWP vs Word" 듀얼 인터페이스 및 키맵 전환 시스템
-사용자의 습관과 선호도에 따라 단 한 번의 클릭 또는 환경 설정에서 즉시 **MS Word 모드**와 **아래아한글 모드**를 실시간으로 전환할 수 있습니다.
+### 4. 메뉴·단축키 스타일: 기본 / HWP
+**파일 › 옵션 › 일반 › 리본과 단축키**(자동화: `ui.preset`, 값 `default` | `hwp`)에서 고릅니다. 고른 값은 설정에 저장됩니다.
 
-#### A. 단축키 매핑 비교
-| 주요 기능 | Word 스타일 (`KeymapPreset::Word`) | HWP 스타일 (`KeymapPreset::Hwp`) |
-| :--- | :--- | :--- |
+#### A. HWP 스타일 단축키
+- 한컴 공식 도움말의 「단축키 일람」(한글 2024, https://help.hancom.com/hoffice130/ko-KR/Hwp/view/toolbar/shortcut(table).htm)을 기준으로 삼았습니다. 표는 `crates/ui-egui/src/hwp_keys.rs`의 `KEYS`에 있습니다.
+- WordCraft 기본 키와 똑같이 동작하는 키(Ctrl+C, Ctrl+Z, 화살표 등)는 표에 넣지 않았습니다. 이런 키는 기본 키맵이 그대로 처리합니다.
+- 예: Alt+L 글자 모양, Alt+T 문단 모양, F7 편집 용지, Alt+N/O/S/V/P 파일, Ctrl+Y 한 줄 지우기, Ctrl+E 지우기, Ctrl+L 다시 찾기, Ctrl+Shift+L/C/R/M/T 정렬, Ctrl+1…0 스타일.
+- 한글에는 있지만 WordCraft에 아직 없는 기능(한자 변환, 상용구 등)은 키를 눌러도 Word 기능을 실행하지 않습니다. 대신 상태 표시줄에 "아직 없음"을 알립니다.
+
+#### B. 2단계 연속 키
+- 접두 키는 `Ctrl+N`, `Ctrl+K`, `Ctrl+Q`, `Ctrl+G`, `Ctrl+M`, `Ctrl+W`입니다. 앞 키를 누르면 상태 표시줄에 다음 키를 기다린다고 표시합니다.
+- 기다리는 시간에 제한은 없습니다. Esc나 표에 없는 키를 누르면 취소되고, 아무것도 입력되지 않습니다.
+- 예: Ctrl+N,T 표 / Ctrl+N,I 그림 / Ctrl+N,N 각주 / Ctrl+N,E 미주 / Ctrl+N,H 머리말 / Ctrl+N,M 수식 / Ctrl+K,H 하이퍼링크 / Ctrl+K,B 책갈피 / Ctrl+G,T 문단 부호 / Ctrl+M,R 빨강 / Ctrl+K,1 위치 기억 → Ctrl+Q,1 이동.
+- 구현: 프레임워크 키맵은 키 하나만 묶을 수 있습니다. 그래서 앱의 원시 입력 단계(`hwp_keys::before_input`)에서 페이지에 포커스가 있을 때만 가로챕니다. 입력기(IME)와 상관없이 동작하도록 물리 키로 읽습니다.
+
+#### C. 표 안 키
+- 커서가 셀 안에 있을 때: F5 셀 블록, Ctrl+Enter 줄 추가, Ctrl+BackSpace 줄 지우기, Ctrl+N,A 표 나누기, Ctrl+N,F 계산식.
+- 셀 블록 상태일 때: M 합치기, S 나누기, P 속성, L/B 테두리, C/F 배경, H/W 높이·너비 같게, F7/F8 칸·줄 전체, F5 표 전체, Esc/Enter 블록 해제.
+
+#### D. HWP 스타일 메뉴 탭
+```
+[파일]  [편집]  [보기]  [입력]  [서식]  [쪽]  [검토]  [도구]  |  상황별 탭(표·그림…)
+```
+보기·입력·검토 탭은 기본 리본의 같은 탭을 그대로 씁니다. 편집·서식·쪽·도구 탭은 명령 묶음 표(`crates/ui-egui/src/ribbon/hwp.rs`의 `GROUPS`)로 그립니다. 탭 이름은 영어 키이고, 한국어 번역은 craft-i18n에서 옵니다.
+
+--- | :--- | :--- |
 | **편집 용지 설정 (Page Setup)** | 리본 메뉴 레이아웃 | **`F7`** |
 | **글자 모양 (Font Dialog)** | `Ctrl + D` | **`Alt + L`** |
 | **문단 모양 (Paragraph Dialog)** | `Alt + H, P, G` | **`Alt + T`** |
