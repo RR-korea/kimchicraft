@@ -62,11 +62,13 @@ fn two_step_keys_run_their_command() {
     take_keys(&mut a, true, &mut raw);
     assert!(raw.events.is_empty(), "the first key is taken");
     assert!(a.canvas.key_sequence.is_some(), "and waits for the second");
+    assert!(a.status_message().is_some(), "the status bar says so");
     let mut raw = RawInput { events: vec![press(Key::N, Modifiers::NONE), Event::Text("n".into())], ..Default::default() };
     take_keys(&mut a, true, &mut raw);
     assert!(raw.events.is_empty(), "the second key and its text are taken");
     assert_eq!(footnotes(&a), 1, "Ctrl+N, N inserted a footnote");
     assert!(a.canvas.key_sequence.is_none());
+    assert!(a.status_message().is_none(), "the hint goes once the key ran");
 }
 
 /// Esc, or a second key the sequence doesn't have, ends the wait without typing.
@@ -116,4 +118,17 @@ fn cell_keys_act_only_on_selected_cells() {
     take_keys(&mut a, true, &mut raw);
     assert!(raw.events.is_empty(), "M is taken");
     assert!(cells(&a) < before, "the row's cells merged");
+}
+
+/// A window that nothing in has the keyboard yet (just opened, or raised before a click) still
+/// takes the HWP keys: Ctrl+N waits for its second key instead of opening a new document.
+#[test]
+fn keys_are_taken_before_anything_has_the_keyboard() {
+    let mut a = app();
+    a.run("ui.preset", json!({"value": "hwp"})).unwrap();
+    let ctx = egui::Context::default();
+    let mut raw = RawInput { events: vec![press(Key::N, ctrl())], ..Default::default() };
+    before_input(&mut a, &ctx, &mut raw);
+    assert!(raw.events.is_empty());
+    assert!(a.canvas.key_sequence.is_some());
 }

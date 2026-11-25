@@ -350,15 +350,18 @@ fn outcome(pending: Option<Stroke>, press: Stroke, in_table: bool, in_cells: boo
     Outcome::Pass
 }
 
-/// From the host's raw-input hook, before `embed::before_input`: [`take_keys`] with the page's
-/// focus as the last pass left it.
+/// From the host's raw-input hook, before `embed::before_input`: [`take_keys`] unless a text
+/// field other than the page has the keyboard (a dialog's box, the font box), as the last pass
+/// left it. A ribbon button or nothing at all holding focus (a window just opened) still takes the
+/// keys, so Ctrl+N waits for its second key there too instead of opening a new document.
 pub fn before_input(app: &mut WordApp, ctx: &egui::Context, raw: &mut RawInput) {
-    let page_focused = app.canvas.focused(ctx);
+    let page_focused = app.canvas.focused(ctx) || !ctx.egui_wants_keyboard_input();
     take_keys(app, page_focused, raw);
 }
 
 /// Takes the HWP style's keys out of `raw` and does what they do, before the runtime reads the
-/// frame. Only in the HWP style, with the page holding the keyboard (`page_focused`) and no
+/// frame. Only in the HWP style, with no text field but the page holding the keyboard
+/// (`page_focused`) and no
 /// dialog or File page open; anywhere else a waiting first key is dropped.
 pub fn take_keys(app: &mut WordApp, page_focused: bool, raw: &mut RawInput) {
     if app.ui.ui_preset != crate::preset::UiPreset::Hwp || !page_focused || app.modal_open() || app.ui.backstage {
@@ -384,14 +387,17 @@ pub fn take_keys(app: &mut WordApp, page_focused: bool, raw: &mut RawInput) {
                     false
                 }
                 Outcome::Act(action, keys) => {
-                    app.canvas.key_sequence = None;
+                    // The hint the first key left goes with the wait.
+                    if app.canvas.key_sequence.take().is_some() {
+                        app.status = None;
+                    }
                     acts.push((action, keys));
                     swallow = true;
                     false
                 }
                 Outcome::Cancel => {
                     app.canvas.key_sequence = None;
-                    app.status(String::new());
+                    app.status = None;
                     swallow = true;
                     false
                 }
