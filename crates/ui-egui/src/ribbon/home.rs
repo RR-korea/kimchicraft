@@ -140,10 +140,18 @@ fn text_effects_menu(ui: &mut Ui, cx: &mut BodyCx<'_>, app: &mut WordApp) {
 }
 
 pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
-    // Read directly, not as a command: every command consumes the engine's pending undo joins, and
-    // the ribbon draws between an input method's deletion and the commit that replaces it.
-    let st = wordcraft_engine::cmd::format::state(&app.session);
-    let flag = |k: &str| st.get(k).and_then(Value::as_bool).unwrap_or(false);
+    clipboard_group(row, app);
+    font_group(row, app);
+    paragraph_group(row, app);
+    paragraph_tools_group(row, app);
+    styles_group(row, app);
+    editing_group(row, app);
+    voice_group(row, app);
+    editor_group(row, app);
+}
+
+/// Home › Clipboard. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn clipboard_group(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(ribbon_group("clipboard", "Clipboard", "paste", Some("edit.clipboardPane")), |ui| {
         // The face opens the menu and runs no command, so its tooltip adds Paste's key itself, as this
         // platform writes it ("Paste (Ctrl+V)", "Paste (⌘V)" on macOS). The name screen readers read is "Paste".
@@ -173,6 +181,14 @@ pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             format_painter_button(ui, app);
         });
     });
+}
+
+/// Home › Font. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn font_group(row: &mut RibbonRow<'_>, app: &mut WordApp) {
+    // Read directly, not as a command: every command consumes the engine's pending undo joins, and
+    // the ribbon draws between an input method's deletion and the commit that replaces it.
+    let st = wordcraft_engine::cmd::format::state(&app.session);
+    let flag = |k: &str| st.get(k).and_then(Value::as_bool).unwrap_or(false);
     row.group(ribbon_group("font", "Font", "font", Some("format.fontDialog")), |ui| {
         // The Font and Paragraph groups' small buttons sit side by side with no gap, as the old ribbon's (1 pt apart),
         // and show their icons alone so they never expand with text labels (#7308).
@@ -267,6 +283,10 @@ pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             });
         });
     });
+}
+
+/// Home › Paragraph. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn paragraph_group(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(ribbon_group("paragraph", "Paragraph", "paragraph", Some("para.dialog")), |ui| {
         let rp = app.session.doc.para_at(&app.session.sel.focus).map(|_| wordcraft_engine::cmd::para::selection_para(&app.session));
         let lists = wordcraft_engine::cmd::para::list_buttons(&app.session.doc, rp.as_ref().and_then(|r| r.numbering));
@@ -420,6 +440,10 @@ pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             });
         });
     });
+}
+
+/// Home › Paragraph Tools. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn paragraph_tools_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     // Advanced paragraph tools (#5043): conversions and cleanup over the selection, or the
     // whole document with Ctrl+A first (the commands take `scope: "all"` for that as well).
     row.group(ribbon_group("paragraphTools", "Paragraph Tools", "pilcrow", None), |ui| {
@@ -453,9 +477,18 @@ pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             }
         });
     });
+}
+
+/// Home › Styles. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn styles_group(row: &mut RibbonRow<'_>, app: &mut WordApp) {
+    let st = wordcraft_engine::cmd::format::state(&app.session);
     row.group(ribbon_group("styles", "Styles", "styles", Some("styles.pane")), |ui| {
         super::galleries::styles(ui, app, st.get("style").and_then(Value::as_str));
     });
+}
+
+/// Home › Editing. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn editing_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(ribbon_group("editing", "Editing", "find", None), |ui| {
         Stack::new().gap(Gap::Tight).show(ui, |ui, _| {
             let face = Button::new(tl!("Find").to_string()).icon(IconId::new("find")).tooltip(tl!("Find").to_string());
@@ -482,6 +515,10 @@ pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             });
         });
     });
+}
+
+/// Home › Voice. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn voice_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(ribbon_group("voice", "Voice", "dictate", None), |ui| {
         Button::command(CommandRef::new("tools.dictate"))
             .icon(IconId::new("dictate"))
@@ -489,6 +526,10 @@ pub(super) fn home(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             .arrangement(Arrangement::Stacked)
             .show(ui);
     });
+}
+
+/// Home › Editor. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn editor_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(ribbon_group("editor", "Editor", "editor", None), |ui| {
         Button::command(CommandRef::new("review.spelling"))
             .icon(IconId::new("editor"))

@@ -13,6 +13,9 @@
 //!   catalog) entry per locale that has a `wordcraft.tsv`. Unset, or not a checkout (a warning),
 //!   it is empty and the interface is English only; with `CRAFT_I18N_REQUIRED=1` (releases) that
 //!   is an error instead. Recipe: craft-i18n's `docs/integration.md`.
+//! - `i18n/<locale>/kimchicraft.tsv` (this fork's own rows, for the HWP style's words): laid over
+//!   that locale's `wordcraft.tsv` from `CRAFT_I18N_DIR`, its rows first so they win (craft-i18n
+//!   keeps the first of two rows with the same context and source).
 
 use std::fmt::Write as _;
 
@@ -85,6 +88,7 @@ fn craft_i18n() -> (String, Vec<std::path::PathBuf>) {
     o.push_str("pub static CRAFT_I18N: &craft::i18n::Embedded = &[\n");
     let mut catalogs = Vec::new();
     for (code, shared, app) in entries {
+        let app = with_fork_rows(&code, app);
         catalogs.extend(shared.iter().cloned());
         catalogs.push(app.clone());
         // `{:?}` escapes the path (Windows backslashes) as a Rust string literal.
@@ -93,6 +97,41 @@ fn craft_i18n() -> (String, Vec<std::path::PathBuf>) {
     }
     o.push_str("];\n");
     (o, catalogs)
+}
+
+/// `app`, the locale's craft-i18n catalog, with this fork's rows for `code` laid over it: a file
+/// in `OUT_DIR` holding the fork's rows and then the catalog's rows that they don't replace. `app`
+/// itself when the fork has no rows for the locale or the file can't be written (a warning).
+fn with_fork_rows(code: &str, app: std::path::PathBuf) -> std::path::PathBuf {
+    let fork = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("i18n").join(code).join("kimchicraft.tsv");
+    println!("cargo::rerun-if-changed={}", fork.display());
+    let Ok(rows) = std::fs::read_to_string(&fork) else { return app };
+    let Ok(base) = std::fs::read_to_string(&app) else { return app };
+    // A row's key: its context and English source, the first two columns.
+    let key = |line: &str| {
+        if line.starts_with('#') || line.trim().is_empty() {
+            return None;
+        }
+        let mut cols = line.splitn(3, '\t');
+        Some((cols.next()?.to_string(), cols.next()?.to_string()))
+    };
+    let ours: std::collections::HashSet<_> = rows.lines().filter_map(key).collect();
+    let mut merged = rows.clone();
+    if !merged.ends_with('\n') {
+        merged.push('\n');
+    }
+    for line in base.lines().filter(|l| key(l).is_none_or(|k| !ours.contains(&k))) {
+        merged.push_str(line);
+        merged.push('\n');
+    }
+    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default()).join(format!("wordcraft-{code}.tsv"));
+    match std::fs::write(&out, merged) {
+        Ok(()) => out,
+        Err(e) => {
+            println!("cargo::warning=writing {}: {e}; {} is left out", out.display(), fork.display());
+            app
+        }
+    }
 }
 
 /// A locale's code, its `common.tsv` if any, and its app catalog.

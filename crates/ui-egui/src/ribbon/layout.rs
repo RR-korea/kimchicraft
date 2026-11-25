@@ -69,6 +69,12 @@ pub(super) fn columns_items(ui: &mut Ui, app: &mut WordApp) {
 
 /// Fills the Layout ribbon tab (Page Setup, Paragraph, Arrange).
 pub(super) fn layout(row: &mut RibbonRow<'_>, app: &mut WordApp) {
+    page_setup_group(row, app);
+    layout_rest(row, app);
+}
+
+/// Layout › Page Setup. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn page_setup_group(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(
         RibbonGroup::new("layout.pageSetup", tl!("Page Setup"), IconId::new("wordcraft.more").into()).launcher(CommandRef::new("layout.pageSetup")),
         |ui| {
@@ -145,6 +151,10 @@ pub(super) fn layout(row: &mut RibbonRow<'_>, app: &mut WordApp) {
                 .show(ui);
         },
     );
+}
+
+/// The rest of Layout.
+fn layout_rest(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(
         RibbonGroup::new("layout.paragraph", tl!("Paragraph"), IconId::new("alignLeft").into()).launcher(CommandRef::new("para.dialog")),
         |ui| {

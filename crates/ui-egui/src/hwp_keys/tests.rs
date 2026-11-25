@@ -132,3 +132,15 @@ fn keys_are_taken_before_anything_has_the_keyboard() {
     assert!(raw.events.is_empty());
     assert!(a.canvas.key_sequence.is_some());
 }
+
+/// Every feature a key reports missing, and the status bar's words, have a Korean row in the
+/// fork's catalog (craft-i18n doesn't carry the HWP style's words).
+#[test]
+fn hwp_words_have_korean_rows() {
+    let rows = include_str!("../../i18n/ko/kimchicraft.tsv");
+    let has = |source: &str| rows.lines().any(|l| l.split('\t').nth(1) == Some(source));
+    let words = KEYS.iter().filter_map(|(_, _, a)| if let Action::Missing(f) = a { Some(*f) } else { None });
+    for word in words.chain(["press the next key, or Esc to cancel", "not available yet"]) {
+        assert!(has(word), "no Korean row for {word:?}");
+    }
+}

@@ -41,6 +41,14 @@ impl ItemSource<usize> for SymbolCells {
 ///
 // PLAN: each menu button's `about` is the command its menu runs; the base's `MenuButtonOptions` ids were not in the bundle.
 pub(super) fn insert(row: &mut RibbonRow<'_>, app: &mut WordApp) {
+    pages_group(row, app);
+    insert_middle(row, app);
+    header_footer_group(row, app);
+    insert_end(row, app);
+}
+
+/// Insert › Pages. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn pages_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(RibbonGroup::new("Pages", crate::tl!("Pages"), IconId::new("coverPage").into()), |ui| {
         Stack::new().gap(Gap::Tight).show(ui, |ui, _| {
             menu_button(
@@ -62,6 +70,10 @@ pub(super) fn insert(row: &mut RibbonRow<'_>, app: &mut WordApp) {
                 .show(ui);
         });
     });
+}
+
+/// The rest of Insert.
+fn insert_middle(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(RibbonGroup::new("Tables", crate::tl!("Tables"), IconId::new("table").into()), |ui| {
         let closed = menu_button(
             ui,
@@ -162,6 +174,10 @@ pub(super) fn insert(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             .arrangement(Arrangement::Stacked)
             .show(ui);
     });
+}
+
+/// Insert › Header & Footer. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn header_footer_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(RibbonGroup::new("Header & Footer", crate::tl!("Header & Footer"), IconId::new("header").into()), |ui| {
         menu_button(
             ui,
@@ -216,6 +232,10 @@ pub(super) fn insert(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             },
         );
     });
+}
+
+/// The rest of Insert.
+fn insert_end(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(RibbonGroup::new("Text", crate::tl!("Text"), IconId::new("textBox").into()), |ui| {
         Button::command(CommandRef::with_params("insert.textBox", json!({})))
             .label(crate::tl!("Text\nBox"))

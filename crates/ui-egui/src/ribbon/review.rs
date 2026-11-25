@@ -12,6 +12,14 @@ use super::{WordApp, json};
 
 /// The Review tab.
 pub(super) fn review(row: &mut RibbonRow<'_>, app: &mut WordApp) {
+    proofing_group(row, app);
+    review_middle(row, app);
+    language_group(row, app);
+    review_rest(row, app);
+}
+
+/// Review › Proofing. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn proofing_group(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(RibbonGroup::new("review.proofing", tl!("Proofing").to_string(), IconId::new("spelling").into()), |ui| {
         Button::command(CommandRef::new("review.spelling"))
             .label(tl!("Spelling &\nGrammar").to_string())
@@ -26,6 +34,10 @@ pub(super) fn review(row: &mut RibbonRow<'_>, app: &mut WordApp) {
                 .show(ui);
         });
     });
+}
+
+/// The rest of Review.
+fn review_middle(row: &mut RibbonRow<'_>, _app: &mut WordApp) {
     row.group(RibbonGroup::new("review.speech", tl!("Speech").to_string(), IconId::new("readAloud").into()), |ui| {
         Button::command(CommandRef::new("review.readAloud"))
             .label(tl!("Read\nAloud").to_string())
@@ -40,6 +52,10 @@ pub(super) fn review(row: &mut RibbonRow<'_>, app: &mut WordApp) {
             .arrangement(Arrangement::Stacked)
             .show(ui);
     });
+}
+
+/// Review › Language. Its own function so the HWP style can show the group on its own tab.
+pub(super) fn language_group(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(RibbonGroup::new("review.language", tl!("Language").to_string(), IconId::new("language").into()), |ui| {
         Button::command(CommandRef::new("review.translate"))
             .label(tl!("Translate").to_string())
@@ -49,6 +65,10 @@ pub(super) fn review(row: &mut RibbonRow<'_>, app: &mut WordApp) {
         let face = Button::new(tl!("Language").to_string()).icon(IconId::new("language")).arrangement(Arrangement::Stacked);
         menu_button(ui, face, tl!("Language").to_string(), None, |ui, _| language_menu(ui, app));
     });
+}
+
+/// The rest of Review.
+fn review_rest(row: &mut RibbonRow<'_>, app: &mut WordApp) {
     row.group(RibbonGroup::new("review.comments", tl!("Comments").to_string(), IconId::new("newComment").into()), |ui| {
         Button::command(CommandRef::new("review.newComment"))
             .label(tl!("New\nComment").to_string())

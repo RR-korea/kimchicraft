@@ -140,8 +140,15 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) -> RibbonOutput<String> {
     let tabs: Vec<RibbonTab<String>> = names
         .iter()
         .map(|(name, custom)| {
-            // A custom tab's name is the user's own text: shown as typed.
-            let label = if *custom { name.clone() } else { tl!(name.as_str()).to_string() };
+            // A custom tab's name is the user's own text: shown as typed. The HWP style's tabs
+            // take its own words where they differ (`hwp` context: Insert is 입력 there).
+            let label = if *custom {
+                name.clone()
+            } else if hwp {
+                crate::i18n::tc("hwp", name.as_str()).to_string()
+            } else {
+                tl!(name.as_str()).to_string()
+            };
             let tab = RibbonTab::new(name.clone(), label);
             let contextual = wordcraft_engine::ribbon::CONTEXTUAL_TABS.contains(&name.as_str()) && !user_tabs.iter().any(|e| e.name == *name);
             if contextual { tab.contextual() } else { tab }

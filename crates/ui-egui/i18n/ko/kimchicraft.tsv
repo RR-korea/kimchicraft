@@ -1,0 +1,31 @@
+# KimchiCraft's own Korean rows, laid over craft-i18n's locales/ko/wordcraft.tsv at build time
+# (crates/ui-egui/build.rs, with_fork_rows). The words of the HWP style, which craft-i18n doesn't carry.
+# Columns, separated by a TAB:  context <TAB> English source text <TAB> translation
+#   context  empty, or `hwp`: the HWP style's tab and group names, looked up there first so they
+#            can take the word processor's own terms without changing the default ribbon's.
+hwp	Insert	입력
+hwp	Page	쪽
+hwp	Customize	사용자 설정
+	HWP style	HWP 스타일
+	Ribbon and shortcuts:	리본과 단축키:
+	The HWP style shows the Hangul word processor's menu tabs and uses its keys, such as Alt+L for Character Shape and Ctrl+N then T for a table.	HWP 스타일은 한글 워드프로세서의 메뉴 탭과 단축키를 씁니다. 예: Alt+L 글자 모양, Ctrl+N 다음 T 표 만들기.
+	press the next key, or Esc to cancel	다음 키를 누르세요 (Esc: 취소)
+	not available yet	아직 지원하지 않습니다
+	Insert File	문서 끼워 넣기
+	Convert to Hanja	한자로 바꾸기
+	Convert Hanja to Hangul	한글로 바꾸기
+	Minimize All	모두 아이콘으로
+	Switch Pane	화면 이동
+	Paragraph Rule	문단 띠
+	OLE Object	OLE 개체
+	Edit Object	고치기
+	Hide on This Page	감추기
+	Wider Character Spacing	자간 넓게
+	Narrower Character Spacing	자간 좁게
+	Narrower Characters	장평 좁게
+	Wider Characters	장평 넓게
+	Wider Line Spacing	줄 간격 넓게
+	Narrower Line Spacing	줄 간격 좁게
+	Join Tables	표 붙이기
+	Fill Cells	표 자동 채우기
+	AutoText	상용구
