@@ -51,8 +51,9 @@
   ```
 - **아직 확인 못 한 것:** 내보낸 HWPX를 실제 한컴오피스에서 여는 시험, 줄 간격(HWP 백분율 → Word 배수) 매핑.
 
-### 4. 메뉴·단축키 스타일: 기본 / HWP
-**파일 › 옵션 › 일반 › 리본과 단축키**(자동화: `ui.preset`, 값 `default` | `hwp`)에서 고릅니다. 고른 값은 설정에 저장됩니다.
+### 4. 메뉴·단축키 스타일: HWP(기본값) / 기본
+**처음 실행하면 HWP 스타일로 열립니다.** 원래 WordCraft 리본으로 바꾸려면 **파일 › 옵션 › 일반 › 리본과 단축키**에서 "기본"을 고릅니다(자동화: `ui.preset`, 값 `hwp` | `default`). 고른 값은 설정에 저장되고, 한 번 고른 사람에게는 그 값이 유지됩니다.
+- 구현: 저장된 설정에 스타일이 없을 때의 값이 HWP 스타일입니다(`crates/ui-egui/src/prefs.rs`). HWP 스타일에는 "홈" 탭이 없어서 첫 탭인 "서식"으로 엽니다. 설정 없이 띄우는 테스트·스크립트용 앱(`WordApp::new`)은 원래 리본 그대로입니다.
 
 #### A. HWP 스타일 단축키
 - 한컴 공식 도움말의 「단축키 일람」(한글 2024, https://help.hancom.com/hoffice130/ko-KR/Hwp/view/toolbar/shortcut(table).htm)을 기준으로 삼았습니다. 표는 `crates/ui-egui/src/hwp_keys.rs`의 `KEYS`에 있습니다.
@@ -82,46 +83,6 @@
   - 도구 = 교정, 언어, 사용자 설정
 - 한국어 번역: craft-i18n에 없는 HWP 스타일 낱말은 `crates/ui-egui/i18n/ko/kimchicraft.tsv`에 둡니다. 빌드할 때 `build.rs`가 이 파일을 craft-i18n의 한국어 카탈로그 위에 얹습니다.
 - HWP 탭 이름은 `hwp` 문맥으로 먼저 찾습니다. 그래서 HWP 스타일에서는 "입력", "쪽"으로 나오고, 기본 리본에서는 그대로 "삽입", "페이지"로 나옵니다.
-
---- | :--- | :--- |
-| **편집 용지 설정 (Page Setup)** | 리본 메뉴 레이아웃 | **`F7`** |
-| **글자 모양 (Font Dialog)** | `Ctrl + D` | **`Alt + L`** |
-| **문단 모양 (Paragraph Dialog)** | `Alt + H, P, G` | **`Alt + T`** |
-| **저장 (Save)** | `Ctrl + S` | **`Alt + S`** (Ctrl+S 병행) |
-| **불러오기 (Open)** | `Ctrl + O` | **`Alt + O`** |
-| **새 문서 (New)** | `Ctrl + N` | **`Alt + N`** |
-| **인쇄 (Print)** | `Ctrl + P` | **`Alt + P`** |
-| **문자표 / 기호 (Symbol)** | 기호 대화상자 | **`Ctrl + F10`** |
-| **모양 복사 (Format Painter)** | `Ctrl + Shift + C` | **`Alt + C`** |
-
-#### B. 2단계 연쇄 단축키 (Chord State Machine) 지원
-HWP 특유의 `Ctrl + N` 계열 조합 키를 완벽 지원합니다:
-- **`Ctrl + N` 입력 후 `T`:** 표 만들기 대화상자 실행
-- **`Ctrl + N` 입력 후 `I`:** 그림 삽입 대화상자 실행
-- **`Ctrl + N` 입력 후 `F`:** 각주 삽입
-- **`Ctrl + N` 입력 후 `H`:** 머리글 삽입
-
-#### C. 표(Table) 내부 핫키 지원
-커서가 표 안에 위치하고 셀 블록이 선택되었을 때, 타이핑과 충돌 없이 전용 핫키가 동작합니다:
-- **`F5`:** 1회 누름 시 현재 셀 선택, 2회 누름 시 다중 셀 확장, 3회 누름 시 표 전체 선택
-- **`M`:** 선택된 셀 합치기 (Merge Cells)
-- **`S`:** 셀 나누기 (Split Cells) 대화상자 호출
-- **`C`:** 셀 배경색 및 테두리 설정 (Color / Shading)
-- **`L`:** 셀 선 모양 설정 (Line / Borders)
-
-#### D. HWP 스타일 8대 메뉴 탭 구성
-상단 리본 인터페이스가 한글 사용자에게 익숙한 구조로 재배치됩니다:
-```
-[파일]  [편집]  [보기]  [입력]  [서식]  [쪽]  [검토]  [도구]  |  [표 디자인/레이아웃]
-```
-- **파일:** 새로 만들기, 불러오기, 저장, 다른 이름으로 저장, 인쇄, 문서 정보
-- **편집:** 실행 취소, 다시 실행, 오려두기, 복사, 붙여넣기, 모양 복사, 찾기/바꾸기
-- **보기:** 쪽 윤곽(인쇄 레이아웃), 읽기 모드, 눈금자, 다크 페이지, 확대/축소
-- **입력:** 표(Ctrl+N, T), 그림(Ctrl+N, I), 수식, 문자표(Ctrl+F10), 각주
-- **서식:** 글자 모양(Alt+L), 문단 모양(Alt+T), 스타일 갤러리
-- **쪽:** 편집 용지(F7), 여백, 다단, 구역 나누기, 머리글/꼬리말, 쪽 번호
-- **검토:** 맞춤법 검사, 변경 내용 추적, 메모
-- **도구:** 단축키 설정, 환경 설정
 
 ---
 
@@ -197,19 +158,41 @@ KimchiCraft Workspace
 ## 🛠️ 빌드 및 실행 방법 (Build & Run)
 
 ### 요구 사양
-- **Rust:** 최신 stable 버전 (1.95+ 권장)
+- **Rust:** 최신 stable 버전 (1.95+ 권장). 윈도우에서는 [rustup](https://rustup.rs)으로 MSVC 툴체인(`stable-x86_64-pc-windows-msvc`)을 설치합니다.
+- **Visual Studio Build Tools:** "C++를 사용한 데스크톱 개발" 워크로드 (윈도우만)
 - **Git**
+
+> ⚠️ **한국어 화면은 별도 저장소가 필요합니다.** 메뉴 번역은 이 저장소가 아니라 [storytold/craft-i18n](https://github.com/storytold/craft-i18n)에 있습니다. 빌드할 때 `CRAFT_I18N_DIR`로 그 위치를 알려주지 않으면 **오류 없이 영어 전용 앱**이 만들어집니다. 쓸 커밋은 `craft-i18n.rev`에 적혀 있습니다.
 
 ### 1. 저장소 클론
 ```bash
 git clone https://github.com/RR-korea/kimchicraft.git
 cd kimchicraft
+git checkout feat/hwp-preset   # HWP 작업 브랜치
 ```
 
-### 2. 데스크톱 앱 실행
-```bash
-cargo run --bin wordcraft
+### 2. 윈도우 빌드 (권장: 스크립트)
+```powershell
+.\build-windows.ps1        # 빌드
+.\build-windows.ps1 -Run   # 빌드 후 실행
 ```
+스크립트가 하는 일:
+1. `..\craft-i18n`(저장소 옆 폴더)에 craft-i18n을 받아 `craft-i18n.rev`의 커밋으로 맞춥니다.
+2. `CRAFT_I18N_DIR`을 그 폴더로, `CRAFT_I18N_REQUIRED=1`(번역이 빠지면 실패)로 정하고 `cargo build --release -p wordcraft`를 실행합니다.
+
+결과물: `target\release\wordcraft.exe` (글꼴·아이콘·번역이 모두 들어 있는 단일 실행 파일). 처음 빌드는 30분 넘게 걸리고, 그 뒤로는 바뀐 부분만 다시 컴파일합니다.
+
+스크립트 없이 직접 빌드하려면:
+```powershell
+git clone https://github.com/storytold/craft-i18n.git ..\craft-i18n
+git -C ..\craft-i18n checkout (Get-Content craft-i18n.rev)
+$env:CRAFT_I18N_DIR = (Resolve-Path ..\craft-i18n).Path
+cargo build --release -p wordcraft
+```
+
+화면 언어는 윈도우 표시 언어를 따릅니다(한국어 윈도우면 한국어).
+
+**다른 PC에 나눠줄 때:** 위 빌드는 Visual C++ 런타임을 따로 필요로 할 수 있습니다. 런타임까지 넣은 포터블 zip과 MSI는 `packaging\windows\package.ps1`로 만듭니다(WiX v5 필요, 자세한 내용은 스크립트 머리말). 이때도 `CRAFT_I18N_DIR`을 먼저 정해야 합니다.
 
 ### 3. 테스트 실행
 ```bash
