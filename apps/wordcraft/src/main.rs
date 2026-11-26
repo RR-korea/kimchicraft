@@ -554,7 +554,7 @@ fn main() -> eframe::Result {
             if std::env::var("WORDCRAFT_FILE_DIALOG").is_ok_and(|v| v.trim().eq_ignore_ascii_case("builtin")) {
                 app = app.with_fallback_chooser(true);
             }
-            app.set_startup_update_check(true);
+            // No update check at start: KimchiCraft never takes WordCraft's releases (no HWP support).
             // After the preferences, so the reason it gives is in the interface language.
             if updates_unsafe {
                 app.disable_self_update();

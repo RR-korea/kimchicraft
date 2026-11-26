@@ -25,7 +25,8 @@ impl Default for Runtime {
     fn default() -> Self {
         Self {
             #[cfg(not(target_arch = "wasm32"))]
-            updater: Updater::new(&crate::UPDATE_APP, env!("CARGO_PKG_VERSION")).with_translator(translate),
+            // KimchiCraft never offers WordCraft's releases: they have no HWP support.
+            updater: Updater::new(&crate::UPDATE_APP, env!("CARGO_PKG_VERSION")).with_translator(translate).with_source(no_updates()),
             #[cfg(not(target_arch = "wasm32"))]
             startup_check: false,
             #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -79,6 +80,13 @@ impl WordApp {
     pub fn start_pending_update(&mut self) {
         self.updates_rt.updater.start_pending_update();
     }
+}
+
+/// KimchiCraft's update check: it never asks WordCraft's release feed, whose builds would replace
+/// this fork with one that cannot open HWP files, and says where the fork's own builds are.
+#[cfg(not(target_arch = "wasm32"))]
+fn no_updates() -> craft::update::updater::CheckSource {
+    std::sync::Arc::new(|| Err(tl!("KimchiCraft does not update itself. New versions are at github.com/RR-korea/kimchicraft.").to_string().into()))
 }
 
 /// A check for updates that never finds one and gives the reason as its error, which Help ▸ Check
