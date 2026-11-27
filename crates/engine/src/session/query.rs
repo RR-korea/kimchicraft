@@ -338,5 +338,25 @@ pub fn blank_document(region: &wordcraft_geom::Region) -> Document {
     let (_, w, h) = region.paper();
     d.last_section.page_w = w;
     d.last_section.page_h = h;
+    set_new_document_font(&mut d);
     d
+}
+
+/// The font of a new blank document's text and headings. KimchiCraft is written in Korean first,
+/// and this face has Hangul and Latin; where it isn't installed, layout substitutes as for any font.
+pub const NEW_DOCUMENT_FONT: &str = "Malgun Gothic";
+
+/// Put [`NEW_DOCUMENT_FONT`] where the built-in styles and theme name the built-in fonts. A
+/// style with a font of its own choosing keeps it.
+fn set_new_document_font(d: &mut Document) {
+    use wordcraft_doc::styles::{BODY_FONT, HEADING_FONT};
+    d.settings.major_font = NEW_DOCUMENT_FONT.into();
+    d.settings.minor_font = NEW_DOCUMENT_FONT.into();
+    let sheet = std::sync::Arc::make_mut(&mut d.styles);
+    let fonts = std::iter::once(&mut sheet.default_chr).chain(sheet.styles.iter_mut().map(|st| &mut st.chr));
+    for chr in fonts {
+        if chr.font.as_deref().is_some_and(|f| f == BODY_FONT || f == HEADING_FONT) {
+            chr.font = Some(NEW_DOCUMENT_FONT.into());
+        }
+    }
 }

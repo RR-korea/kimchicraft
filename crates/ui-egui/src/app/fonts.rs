@@ -28,7 +28,31 @@ pub fn ui_fonts(lang: Lang) -> UiFonts<'static> {
     };
     #[cfg(not(target_arch = "wasm32"))]
     let fonts = fonts.on_demand(Arc::new(SystemCandidates));
+    #[cfg(windows)]
+    let fonts = malgun_gothic(fonts);
     fonts
+}
+
+/// KimchiCraft draws its interface in Malgun Gothic, the Korean face every Windows has, so Hangul
+/// and Latin come from one face: regular for text, bold for the semibold roles. If Windows lacks
+/// the files, the suite's faces stay.
+#[cfg(windows)]
+fn malgun_gothic(fonts: UiFonts<'static>) -> UiFonts<'static> {
+    use std::sync::OnceLock;
+
+    use craft::ui::fonts::{FontRef, SEMIBOLD};
+
+    static FACES: OnceLock<Option<[egui::FontData; 2]>> = OnceLock::new();
+    let faces = FACES.get_or_init(|| {
+        let dir = std::path::PathBuf::from(std::env::var_os("WINDIR")?).join("Fonts");
+        let face = |file: &str| std::fs::read(dir.join(file)).ok().map(egui::FontData::from_owned);
+        Some([face("malgun.ttf")?, face("malgunbd.ttf")?])
+    });
+    let Some([regular, bold]) = faces else { return fonts };
+    fonts
+        .app_face("Malgun Gothic", regular.clone(), &[FontRef::proportional()])
+        .app_face("Malgun Gothic Bold", bold.clone(), &[FontRef::named(SEMIBOLD)])
+        .app_scripts(&["Latn", "Cyrl", "Grek", "Hang"])
 }
 
 #[cfg(test)]
